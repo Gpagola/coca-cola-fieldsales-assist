@@ -1,0 +1,16 @@
+[Unit]
+Description=Smart Assist — Flask Backend
+After=network.target
+
+[Service]
+User=debian
+WorkingDirectory=/opt/smartassist
+EnvironmentFile=/opt/smartassist/.env
+ExecStart=/opt/smartassist/.venv/bin/python backend.py
+Restart=always
+RestartSec=5
+StandardOutput=append:/var/log/smartassist.log
+StandardError=append:/var/log/smartassist.log
+
+[Install]
+WantedBy=multi-user.target

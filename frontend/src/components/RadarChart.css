@@ -1,0 +1,88 @@
+/* ── Radar Chart — Palantir style ─────────────────────────────────────────── */
+
+.radar-chart {
+  width: 280px;
+  height: 250px;
+  padding: 12px 8px 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  border-bottom: 1px solid var(--border);
+  box-sizing: border-box;
+}
+
+.radar-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 4px;
+}
+
+.radar-title {
+  font-family: "Alliance No.1", sans-serif;
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.10em;
+  color: var(--text);
+}
+
+.radar-waiting {
+  font-size: 10px;
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+.radar-svg {
+  width: 100%;
+  height: auto;
+  margin: 0 auto;
+}
+
+/* Grid */
+.radar-grid {
+  fill: none;
+  stroke: var(--text-muted);
+  stroke-width: 0.8;
+  opacity: 0.6;
+}
+
+.radar-axis {
+  stroke: var(--text-muted);
+  stroke-width: 0.8;
+  opacity: 0.6;
+}
+
+/* Data polygon */
+.radar-fill {
+  fill: color-mix(in srgb, var(--text) 8%, transparent);
+}
+
+.radar-stroke {
+  fill: none;
+  stroke: var(--text);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+}
+
+.radar-dot {
+  fill: var(--text);
+}
+
+/* Labels */
+.radar-label {
+  font-family: "Alliance No.1", sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  fill: var(--text);
+  letter-spacing: 0.02em;
+}
+
+.radar-label.hot {
+  fill: var(--text);
+  font-weight: 500;
+}
+

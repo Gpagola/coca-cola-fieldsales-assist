@@ -1,0 +1,50 @@
+.gauge-chart {
+  width: 280px;
+  height: 190px;
+  padding: 12px 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  border-bottom: 1px solid var(--border);
+  box-sizing: border-box;
+}
+
+.gauge-title {
+  font-family: "Alliance No.1", sans-serif;
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.10em;
+  color: var(--text);
+}
+
+.gauge-svg {
+  width: 100%;
+  max-width: 200px;
+  height: auto;
+}
+
+.gauge-value {
+  font-family: "Alliance No.1", sans-serif;
+  font-size: 18px;
+  font-weight: 500;
+  fill: var(--text);
+}
+
+.gauge-label {
+  font-family: "Alliance No.1", sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-top: -4px;
+}
+
+.gauge-waiting {
+  font-size: 11px;
+  color: var(--text-faint);
+  margin-top: 4px;
+}
