@@ -1,5 +1,5 @@
 """
-Backend Flask — Asistente de Atencion al Cliente (Retail)
+Backend Flask — Asistente de Fuerza de Venta en Terreno (Coca-Cola)
 Expone el agente LangGraph como API REST para el frontend React.
 """
 
@@ -21,7 +21,7 @@ from langchain_core.messages import HumanMessage
 from chatbot import build_agent, get_conn, preload_ontologies, invalidate_ontology_cache, get_active_perfil_id
 
 # Ontologias que pertenecen a un perfil (vs globales como autopilot-*)
-PROFILE_ONTOLOGIES = ("system-prompt", "ontologia-procedimientos", "ontologia-faq")
+PROFILE_ONTOLOGIES = ("system-prompt", "ontologia-procedimientos", "ontologia-descuentos", "ontologia-faq")
 from autopilot import (
     generar_caso_aleatorio, evaluar_conversacion, get_all_pedidos,
     MOTIVOS, PERSONALIDADES, _generar_mensaje_cliente
@@ -58,17 +58,18 @@ def _analyze_risk_profile(conversation_text: str) -> dict | None:
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": (
-                    "Analiza esta conversacion de atencion al cliente de retail y devuelve:\n"
+                    "Analiza esta conversacion de un vendedor de fuerza de venta en terreno con "
+                    "su asistente y devuelve:\n"
                     "1. Tipo de consulta por dimension (0-100, 0=no detectado, 100=muy presente):\n"
-                    "   - pedido: consulta sobre estado del pedido o seguimiento\n"
-                    "   - envio: problema o pregunta sobre envio, retraso, tracking\n"
-                    "   - devolucion: devolucion, cambio, reembolso\n"
-                    "   - producto: informacion de producto, disponibilidad, tallas\n"
-                    "   - pago: facturacion, cargo, metodo de pago\n"
-                    "   - queja: queja o reclamacion sobre el servicio\n"
+                    "   - pedido: toma o seguimiento de un pedido\n"
+                    "   - logistica: entrega, demora, distribucion directa/indirecta\n"
+                    "   - posventa: faltante, defecto, error de facturacion\n"
+                    "   - catalogo: consulta de producto, SKU, formato, precio de lista\n"
+                    "   - pago: condicion de pago, credito, contado\n"
+                    "   - escalamiento: excepcion de politica, pedido de descuento fuera de rango\n"
                     "2. resolucion: probabilidad de resolver satisfactoriamente la consulta (0-100)\n"
-                    "3. sentimiento: estado emocional actual del cliente (-100 muy negativo a +100 muy positivo)\n\n"
-                    "Responde SOLO JSON: {\"pedido\":N,\"envio\":N,\"devolucion\":N,\"producto\":N,\"pago\":N,\"queja\":N,\"resolucion\":N,\"sentimiento\":N}"
+                    "3. sentimiento: estado de animo actual del vendedor (-100 muy negativo a +100 muy positivo)\n\n"
+                    "Responde SOLO JSON: {\"pedido\":N,\"logistica\":N,\"posventa\":N,\"catalogo\":N,\"pago\":N,\"escalamiento\":N,\"resolucion\":N,\"sentimiento\":N}"
                 )},
                 {"role": "user", "content": conversation_text[-2000:]},
             ],
@@ -78,7 +79,7 @@ def _analyze_risk_profile(conversation_text: str) -> dict | None:
         raw = response.choices[0].message.content.strip()
         raw = re.sub(r'^```[a-z]*\n?', '', raw).rstrip('`').strip()
         result = json.loads(raw)
-        for key in ["pedido", "envio", "devolucion", "producto", "pago", "queja"]:
+        for key in ["pedido", "logistica", "posventa", "catalogo", "pago", "escalamiento"]:
             result[key] = max(0, min(100, int(result.get(key, 0))))
         result["resolucion"]  = max(0, min(100, int(result.get("resolucion", 50))))
         result["sentimiento"] = max(-100, min(100, int(result.get("sentimiento", 0))))
@@ -103,13 +104,13 @@ def _generar_sugerencias_rapidas(user_msg: str, assistant_msg: str) -> list:
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": (
-                    "Eres una ayuda en una app de atencion al cliente para retail. "
-                    "El usuario es el cliente. Dado el ultimo mensaje del asistente, "
-                    "genera 3-4 frases cortas (max 6 palabras) que el cliente podria "
+                    "Eres una ayuda en una app de asistente de venta en terreno para Coca-Cola. "
+                    "El usuario es el vendedor. Dado el ultimo mensaje del asistente, "
+                    "genera 3-4 frases cortas (max 6 palabras) que el vendedor podria "
                     "escribir como respuesta o siguiente pregunta. "
-                    "Ejemplos: 'Quiero devolver un pedido', 'Cual es el estado?', "
-                    "'No lo he recibido aun', 'Es PED-0042', 'Gracias por la ayuda'. "
-                    "NUNCA generes frases del asistente. Solo respuestas del cliente. "
+                    "Ejemplos: 'Es CLI-0012', 'Cual es el descuento?', "
+                    "'Quiero registrar el pedido', 'El cliente pide credito', 'Gracias'. "
+                    "NUNCA generes frases del asistente. Solo respuestas del vendedor. "
                     "Responde SOLO con JSON array de strings."
                 )},
                 {"role": "user", "content": f"Ultimo mensaje del asistente:\n{lines[-1] if lines else ''}"},
@@ -131,28 +132,26 @@ def _generar_sugerencias_rapidas(user_msg: str, assistant_msg: str) -> list:
     return []
 
 
-# ── Parser de resultado de buscar_pedido ─────────────────────────────────────
+# ── Parser de resultado de consultar_cuenta_cliente ──────────────────────────
 
 def _parse_pedido_result(text: str) -> dict | None:
-    """Parsea el texto devuelto por buscar_pedido y retorna un dict estructurado."""
-    if "Pedido encontrado" not in text:
+    """Parsea el texto devuelto por consultar_cuenta_cliente y retorna un dict
+    estructurado para la barra de contexto del chat (mismo nombre de funcion que
+    antes por compatibilidad con el resto del streaming, aunque ahora describe
+    una cuenta B2B en vez de un pedido de retail)."""
+    if "Cuenta encontrada" not in text:
         return None
     def field(pattern):
         m = re.search(pattern, text, re.IGNORECASE)
         return m.group(1).strip() if m else None
     return {
-        "numero":          field(r"Numero[:\s]+([^\n]+)"),
-        "fecha_pedido":    field(r"Fecha del pedido[:\s]+([^\n]+)"),
-        "estado":          field(r"Estado[:\s]+([^\n]+)"),
-        "total":           field(r"Total[:\s]+([^\n]+)"),
-        "metodo_pago":     field(r"Metodo de pago[:\s]+([^\n]+)"),
-        "tracking":        field(r"Tracking[:\s]+([^\n]+)"),
-        "fecha_envio":     field(r"Fecha envio[:\s]+([^\n]+)"),
-        "entrega_estimada": field(r"Entrega estimada[:\s]+([^\n]+)"),
-        "cliente":         field(r"Nombre[:\s]+([^\n]+)"),
-        "email":           field(r"Email[:\s]+([^\n]+)"),
-        "nivel_fidelidad": field(r"Nivel de fidelidad[:\s]+([^\n]+)"),
-        "ciudad":          field(r"Ciudad[:\s]+([^\n]+)"),
+        "numero":          field(r"Codigo[:\s]+([^\n]+)"),
+        "cliente":         field(r"Nombre comercial[:\s]+([^\n]+)"),
+        "estado":          field(r"Canal[:\s]+([^\n]+)"),
+        "nivel_fidelidad": field(r"Tamano de canal[:\s]+([^\n]+)"),
+        "metodo_pago":     field(r"Condicion de pago habitual[:\s]+([^\n]+)"),
+        "tracking":        field(r"Tipo de distribucion[:\s]+([^\n]+)"),
+        "ciudad":          field(r"Ciudad / zona[:\s]+([^\n]+)"),
     }
 
 
@@ -182,20 +181,20 @@ def chat():
     config = {"configurable": {"thread_id": session_id}}
 
     TOOL_STATUS = {
-        "buscar_pedido":              "Buscando pedido...",
-        "buscar_cliente":             "Buscando tus datos...",
-        "buscar_producto":            "Consultando catalogo...",
-        "ontologia_procedimientos":   "Consultando procedimientos...",
-        "ontologia_faq":              "Buscando en FAQ...",
-        "analizar_documento":         "Analizando documento adjunto...",
-        "consultar_reclamos":         "Consultando reclamos...",
-        "abrir_reclamo":              "Abriendo reclamo...",
-        "cancelar_pedido":            "Cancelando pedido...",
-        "actualizar_direccion_envio": "Actualizando direccion de envio...",
-        "cambiar_metodo_pago":        "Cambiando metodo de pago...",
-        "iniciar_devolucion":         "Tramitando devolucion...",
-        "marcar_incidencia_entrega":  "Registrando incidencia...",
-        "agregar_nota_pedido":        "Anotando en el pedido...",
+        "consultar_cuenta_cliente":      "Consultando cuenta...",
+        "consultar_historico_pedidos":   "Consultando historico de pedidos...",
+        "buscar_producto":               "Consultando catalogo...",
+        "consultar_politica_descuento":  "Consultando politica de descuento...",
+        "ontologia_procedimientos":      "Consultando procedimientos...",
+        "ontologia_descuentos":          "Consultando ontologia de descuentos...",
+        "ontologia_faq":                 "Buscando en FAQ...",
+        "analizar_documento":            "Analizando documento adjunto...",
+        "consultar_gestiones_posventa":  "Consultando gestiones de posventa...",
+        "crear_pedido":                  "Registrando pedido...",
+        "cambiar_condicion_pago_pedido": "Actualizando condicion de pago...",
+        "cancelar_pedido":               "Cancelando pedido...",
+        "agregar_nota_pedido":           "Anotando en el pedido...",
+        "abrir_gestion_posventa":        "Abriendo gestion de posventa...",
     }
 
     def generate():
@@ -367,13 +366,12 @@ def upload_document():
 
 def _interpretar_con_vision(client, texto_plano=None, b64_imagen=None, b64_pdf=None, mime="image/jpeg"):
     """Llama a GPT-4o para interpretar el documento y clasificarlo."""
-    instruccion = """Eres un asistente de atencion al cliente para una tienda de retail (moda y lifestyle).
+    instruccion = """Eres un asistente de fuerza de venta en terreno de Coca-Cola.
 Analiza el documento adjunto e identifica:
-1. TIPO DE DOCUMENTO: es una factura, un comprobante de pago, foto de producto danado, captura de email, u otro?
+1. TIPO DE DOCUMENTO: es una foto de exhibidor/heladera, una orden de compra escaneada, un comprobante de pago, u otro?
 2. DATOS CLAVE segun el tipo:
-   - Si es factura/comprobante: numero de pedido, fecha, total, metodo de pago
-   - Si es foto de producto: estado aparente (nuevo, danado, defecto), nombre si es visible
-   - Si es email/captura: remitente, motivo, referencias a pedidos
+   - Si es orden de compra/comprobante: cuenta o cliente, fecha, productos, cantidades, total
+   - Si es foto de exhibidor/heladera: estado aparente (surtido, vacio, con competencia), SKUs visibles si se distinguen
    - Otro: resumen del contenido relevante para la consulta
 3. RECOMENDACION: que deberia hacer el asistente con esta informacion
 
@@ -617,6 +615,117 @@ def serve_logo(filename):
     """Sirve los logos guardados en LOGOS_DIR."""
     from flask import send_from_directory
     return send_from_directory(LOGOS_DIR, filename)
+
+
+# ── Endpoints de Cartera (Portal Vendedor) ───────────────────────────────────
+
+@app.route("/api/cartera/clientes", methods=["GET"])
+def cartera_clientes():
+    """Lista las cuentas (empresas cliente) de la cartera. Soporta ?q= para filtrar
+    por codigo o nombre comercial."""
+    q = (request.args.get("q") or "").strip()
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        if q:
+            like = f"%{q}%"
+            cur.execute("""
+                SELECT codigo_cliente, nombre_comercial, canal, tipo_distribucion, tamano_canal,
+                       ciudad, zona, condicion_pago_habitual, vendedor_asignado, activo
+                FROM empresas_clientes
+                WHERE activo = 1 AND (codigo_cliente LIKE %s OR nombre_comercial LIKE %s)
+                ORDER BY nombre_comercial
+            """, (like, like))
+        else:
+            cur.execute("""
+                SELECT codigo_cliente, nombre_comercial, canal, tipo_distribucion, tamano_canal,
+                       ciudad, zona, condicion_pago_habitual, vendedor_asignado, activo
+                FROM empresas_clientes
+                WHERE activo = 1
+                ORDER BY nombre_comercial
+            """)
+        rows = cur.fetchall()
+        cur.close()
+    finally:
+        conn.close()
+
+    return jsonify([
+        {
+            "codigo_cliente": r[0], "nombre_comercial": r[1], "canal": r[2],
+            "tipo_distribucion": r[3], "tamano_canal": r[4], "ciudad": r[5], "zona": r[6],
+            "condicion_pago_habitual": r[7], "vendedor_asignado": r[8], "activo": bool(r[9]),
+        }
+        for r in rows
+    ])
+
+
+@app.route("/api/cartera/pedidos-en-curso", methods=["GET"])
+def cartera_pedidos_en_curso():
+    """Lista los pedidos en estados no finales (solicitado, en_revision, aprobado)."""
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT p.numero_pedido, e.nombre_comercial, e.codigo_cliente, p.canal_venta,
+                   p.fecha_pedido, p.estado, p.condicion_pago, p.total, p.vendedor
+            FROM pedidos p
+            JOIN empresas_clientes e ON e.id = p.empresa_cliente_id
+            WHERE p.estado IN ('solicitado', 'en_revision', 'aprobado')
+            ORDER BY p.fecha_pedido DESC
+        """)
+        rows = cur.fetchall()
+        cur.close()
+    finally:
+        conn.close()
+
+    return jsonify([
+        {
+            "numero_pedido": r[0], "nombre_comercial": r[1], "codigo_cliente": r[2],
+            "canal_venta": r[3], "fecha_pedido": r[4].strftime("%d/%m/%Y") if r[4] else "",
+            "estado": r[5], "condicion_pago": r[6], "total": float(r[7]) if r[7] is not None else 0.0,
+            "vendedor": r[8],
+        }
+        for r in rows
+    ])
+
+
+@app.route("/api/cartera/gestiones-posventa", methods=["GET"])
+def cartera_gestiones_posventa():
+    """Lista las gestiones de posventa. Soporta ?estado= para filtrar."""
+    estado = (request.args.get("estado") or "").strip()
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        if estado:
+            cur.execute("""
+                SELECT g.numero_gestion, e.nombre_comercial, e.codigo_cliente, g.numero_pedido,
+                       g.tipo, g.estado, g.prioridad, g.fecha_apertura
+                FROM gestiones_posventa g
+                JOIN empresas_clientes e ON e.id = g.empresa_cliente_id
+                WHERE g.estado = %s
+                ORDER BY g.fecha_apertura DESC
+            """, (estado,))
+        else:
+            cur.execute("""
+                SELECT g.numero_gestion, e.nombre_comercial, e.codigo_cliente, g.numero_pedido,
+                       g.tipo, g.estado, g.prioridad, g.fecha_apertura
+                FROM gestiones_posventa g
+                JOIN empresas_clientes e ON e.id = g.empresa_cliente_id
+                ORDER BY g.fecha_apertura DESC
+            """)
+        rows = cur.fetchall()
+        cur.close()
+    finally:
+        conn.close()
+
+    return jsonify([
+        {
+            "numero_gestion": r[0], "nombre_comercial": r[1], "codigo_cliente": r[2],
+            "numero_pedido": r[3], "tipo": r[4], "estado": r[5], "prioridad": r[6],
+            "fecha_apertura": r[7].strftime("%d/%m/%Y %H:%M") if r[7] else "",
+        }
+        for r in rows
+    ])
 
 
 # ── Endpoints de administracion ───────────────────────────────────────────────

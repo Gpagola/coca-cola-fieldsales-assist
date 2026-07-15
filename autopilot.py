@@ -1,7 +1,8 @@
 """
-Autopilot — Simulador de cliente + Evaluador de conversaciones (RETAIL)
-Corre conversaciones automaticas contra el agente de atencion al cliente para hacer pruebas.
-El cliente simulado habla DIRECTAMENTE con el asistente (no hay ejecutivo intermediario).
+Autopilot — Simulador de vendedor + Evaluador de conversaciones (COCA-COLA FIELD SALES)
+Corre conversaciones automaticas contra el agente de venta en terreno para hacer pruebas.
+El "cliente" simulado aqui representa al VENDEDOR que conversa DIRECTAMENTE con el asistente
+(no hay ejecutivo intermediario) — es quien realmente usa el chat para preparar sus visitas.
 """
 
 import json
@@ -14,40 +15,36 @@ client = OpenAI()
 # ── Datos de referencia ───────────────────────────────────────────────────────
 
 MOTIVOS = [
-    # Estado de pedido
-    "Quiero saber en que estado esta mi pedido, lleva varios dias sin noticias",
-    "Necesito el tracking de mi pedido, no me ha llegado ningun email",
-    # Retraso de envio
-    "Mi pedido deberia haber llegado ayer y sigo sin recibirlo",
-    "Pague envio express pero lleva mas de una semana sin moverse",
-    # Devoluciones / cambios
-    "Quiero devolver un producto, no me ha gustado",
-    "El producto que recibi no es mi talla, quiero cambiarlo",
-    "Necesito cambiar un articulo por otro modelo",
-    # Producto defectuoso / incorrecto
-    "El producto me llego roto, necesito una solucion",
-    "Me enviaron un articulo diferente al que pedi",
-    "Falta una pieza del pedido que hice",
-    # Informacion de producto
-    "Quiero saber si hay stock de un producto en concreto",
-    "Necesito informacion sobre las caracteristicas de un articulo",
-    # Facturacion / pago
-    "Hay un cobro que no reconozco en mi pedido",
-    "Necesito la factura de mi ultima compra",
-    # Queja / mala experiencia
-    "Estoy muy descontento con el servicio, quiero poner una queja",
-    "La atencion que recibi en la tienda fue pesima",
-    # Cancelacion de pedido
-    "Quiero cancelar un pedido que acabo de hacer",
+    # Preparacion de visita / pitch
+    "Necesito el historico de pedidos de esta cuenta para preparar la visita",
+    "Quiero confirmar el canal y el tamano de esta cuenta antes de negociar",
+    # Descuentos / condiciones comerciales
+    "Quiero saber el descuento aplicable para un pedido de gran volumen",
+    "El cliente quiere renegociar el descuento por volumen",
+    "El cliente pide un descuento mayor al que indica la politica",
+    "Necesito preparar el pitch para renovar el contrato anual de esta cuenta",
+    # Condiciones de pago
+    "El cliente quiere cambiar la condicion de pago a credito",
+    "El pedido quedo rechazado por backoffice por un tema de credito",
+    # Catalogo
+    "El cliente pregunta por un SKU nuevo que no se si tenemos",
+    "El cliente de un bar pregunta por condiciones de comodato de heladera",
+    # Toma de pedido
+    "Quiero registrar el pedido que acaba de confirmar el cliente",
+    "Necesito cancelar un pedido que tome por error",
+    # Posventa
+    "El cliente reporta un faltante de bultos en la ultima entrega",
+    "Hay un error en la factura del ultimo pedido",
+    "El cliente reporta demora en la entrega pactada",
 ]
 
 PERSONALIDADES = [
     "amable y paciente, colabora con el asistente",
-    "impaciente y directo, quiere soluciones rapidas",
-    "frustrado por la espera, algo molesto pero razonable",
-    "muy exigente, espera un trato excelente",
-    "confundido, no recuerda bien los detalles y necesita ayuda",
-    "enfadado por una mala experiencia previa",
+    "impaciente y directo, quiere numeros concretos rapido",
+    "frustrado porque el cliente lo presiono, algo apurado pero razonable",
+    "muy exigente, espera que el asistente resuelva todo de una vez",
+    "confundido, no recuerda bien el codigo de cuenta y necesita ayuda",
+    "molesto porque un pedido anterior tuvo problemas",
     "pragmatico, va al grano y valora la eficiencia",
 ]
 
@@ -55,14 +52,14 @@ PERSONALIDADES = [
 # ── Carga de pedido aleatorio desde la BD ─────────────────────────────────────
 
 def get_pedido_aleatorio() -> dict:
-    """Devuelve un pedido al azar de la BD junto con datos del cliente."""
+    """Devuelve un pedido al azar de la BD junto con datos de la cuenta asociada."""
     conn = get_conn()
     try:
         cur = conn.cursor()
         cur.execute("""
-            SELECT p.numero_pedido, p.estado, c.nombre, c.nivel_fidelidad
+            SELECT p.numero_pedido, p.estado, e.nombre_comercial, e.canal, e.codigo_cliente
             FROM pedidos p
-            JOIN clientes c ON c.id = p.cliente_id
+            JOIN empresas_clientes e ON e.id = p.empresa_cliente_id
             ORDER BY RAND()
             LIMIT 1
         """)
@@ -77,7 +74,8 @@ def get_pedido_aleatorio() -> dict:
         "numero_pedido":   row[0],
         "estado":          row[1],
         "cliente":         row[2],
-        "nivel_fidelidad": row[3],
+        "nivel_fidelidad": row[3],  # reutilizado para transportar el canal de la cuenta
+        "codigo_cliente":  row[4],
     }
 
 
@@ -88,9 +86,9 @@ def get_all_pedidos() -> list[dict]:
         cur = conn.cursor()
         cur.execute("""
             SELECT p.numero_pedido, p.estado, p.fecha_pedido, p.total,
-                   c.nombre, c.nivel_fidelidad, c.ciudad
+                   e.nombre_comercial, e.canal, e.ciudad
             FROM pedidos p
-            JOIN clientes c ON c.id = p.cliente_id
+            JOIN empresas_clientes e ON e.id = p.empresa_cliente_id
             ORDER BY p.numero_pedido
         """)
         rows = cur.fetchall()
@@ -104,7 +102,7 @@ def get_all_pedidos() -> list[dict]:
             "fecha_pedido":    r[2].strftime("%d/%m/%Y") if r[2] else "",
             "total":           float(r[3]) if r[3] is not None else 0.0,
             "cliente":         r[4],
-            "nivel_fidelidad": r[5],
+            "nivel_fidelidad": r[5],  # canal de la cuenta
             "ciudad":          r[6],
         }
         for r in rows
@@ -120,9 +118,9 @@ def generar_caso_aleatorio(numero_pedido: str = None) -> dict:
         try:
             cur = conn.cursor()
             cur.execute("""
-                SELECT p.numero_pedido, p.estado, c.nombre, c.nivel_fidelidad
+                SELECT p.numero_pedido, p.estado, e.nombre_comercial, e.canal, e.codigo_cliente
                 FROM pedidos p
-                JOIN clientes c ON c.id = p.cliente_id
+                JOIN empresas_clientes e ON e.id = p.empresa_cliente_id
                 WHERE p.numero_pedido = %s
             """, (numero_pedido.upper().strip(),))
             row = cur.fetchone()
@@ -136,6 +134,7 @@ def generar_caso_aleatorio(numero_pedido: str = None) -> dict:
             "estado":          row[1],
             "cliente":         row[2],
             "nivel_fidelidad": row[3],
+            "codigo_cliente":  row[4],
         }
     else:
         pedido = get_pedido_aleatorio()
@@ -145,12 +144,13 @@ def generar_caso_aleatorio(numero_pedido: str = None) -> dict:
         "estado":          pedido["estado"],
         "cliente":         pedido["cliente"],
         "nivel_fidelidad": pedido["nivel_fidelidad"],
+        "codigo_cliente":  pedido["codigo_cliente"],
         "motivo":          random.choice(MOTIVOS),
         "personalidad":    random.choice(PERSONALIDADES),
     }
 
 
-# ── LLM Cliente (simula al cliente final que contacta al servicio) ────────────
+# ── LLM "Cliente" (en este dominio: simula al VENDEDOR que usa el chat) ───────
 
 def _load_global_ontologia(nombre: str, fallback: str) -> str:
     """Carga una ontologia global (perfil_id IS NULL) desde la BD.
@@ -171,33 +171,43 @@ def _load_global_ontologia(nombre: str, fallback: str) -> str:
     return row[0] if row else fallback
 
 
-SYSTEM_CLIENTE_FALLBACK = """Eres un cliente de una tienda (retail) que contacta con el servicio de atencion al cliente a traves del chat. Estas hablando DIRECTAMENTE con el asistente de la tienda (no hay ejecutivo intermediario).
+SYSTEM_CLIENTE_FALLBACK = """Eres un vendedor de fuerza de venta en terreno de Coca-Cola que esta usando el
+asistente para preparar una visita o resolver algo de una cuenta. Hablas
+DIRECTAMENTE con el asistente (no hay otro intermediario).
 
 Datos de tu caso:
-- Tu nombre: {cliente}
-- Tu nivel de fidelidad: {nivel_fidelidad}
-- Tu pedido: {numero_pedido} (estado actual: {estado})
+- Cuenta que estas visitando: {cliente} (codigo {codigo_cliente})
+- Canal de la cuenta: {nivel_fidelidad}
+- Numero de tu ultimo pedido relacionado: {numero_pedido} (estado: {estado})
 - Motivo de tu consulta: {motivo}
 - Tu personalidad: {personalidad}
 
 Instrucciones:
-- Responde SIEMPRE en 1-3 frases cortas, como escribiria un cliente real en un chat.
-- Si es tu primer mensaje (primer_turno=True), plantea tu problema de forma natural y directa, como lo harias al abrir un chat de soporte. Puedes mencionar el numero de pedido si es relevante al motivo.
-- Si el asistente te pide el numero de pedido, tu email o datos, proporcionalos segun tu caso.
-- Eres un cliente REALISTA: si el asistente te da una respuesta clara, resuelve tu duda o te propone una solucion concreta, muestrate satisfecho y cierra la conversacion con [DECISION: RESUELTO].
-- Si el asistente no entiende tu problema, da respuestas genericas, te ignora o no resuelve nada tras varios intentos, muestrate insatisfecho y cierra con [DECISION: NO_RESUELTO].
+- Responde SIEMPRE en 1-3 frases cortas, como escribiria un vendedor real en un chat.
+- Si es tu primer mensaje (primer_turno=True), plantea tu necesidad de forma natural
+  y directa, como lo harias al abrir el chat antes de una visita. Podes mencionar el
+  codigo de cuenta si es relevante al motivo.
+- Si el asistente te pide el codigo de cliente u otro dato, proporcionalo segun tu caso.
+- Sos un vendedor REALISTA: si el asistente te da una respuesta clara (politica de
+  descuento, historico, o registra el pedido), mostrate conforme y cierra la
+  conversacion con [DECISION: RESUELTO].
+- Si el asistente no te da un numero concreto, inventa un descuento, o no resuelve
+  nada tras varios intentos, mostrate insatisfecho y cierra con [DECISION: NO_RESUELTO].
 - No decidas antes del turno 3. Dale al asistente la oportunidad de ayudarte.
-- Si el asistente se despide o cierra la conversacion, decide INMEDIATAMENTE con [DECISION: RESUELTO] o [DECISION: NO_RESUELTO] segun si te ayudo o no.
-- NUNCA respondas como asistente, agente ni ejecutivo. Solo eres el cliente escribiendo en el chat."""
+- Si el asistente se despide o cierra la conversacion, decide INMEDIATAMENTE con
+  [DECISION: RESUELTO] o [DECISION: NO_RESUELTO] segun si te ayudo o no.
+- NUNCA respondas como asistente. Solo sos el vendedor escribiendo en el chat."""
+
 
 def _generar_mensaje_cliente(historial: list, caso: dict, primer_turno: bool = False) -> str:
-    """Genera la respuesta del cliente simulado dado el historial.
+    """Genera la respuesta del vendedor simulado dado el historial.
 
-    Si primer_turno=True, genera el mensaje inicial con el que el cliente abre
+    Si primer_turno=True, genera el mensaje inicial con el que el vendedor abre
     el chat planteando su consulta.
     """
     system = _load_global_ontologia("autopilot-cliente", SYSTEM_CLIENTE_FALLBACK).format(
-        cliente=caso.get("cliente", "Cliente"),
+        cliente=caso.get("cliente", "Cuenta"),
+        codigo_cliente=caso.get("codigo_cliente", ""),
         nivel_fidelidad=caso.get("nivel_fidelidad", "estandar"),
         numero_pedido=caso.get("numero_pedido", ""),
         estado=caso.get("estado", ""),
@@ -207,7 +217,7 @@ def _generar_mensaje_cliente(historial: list, caso: dict, primer_turno: bool = F
 
     if primer_turno:
         user_prompt = (
-            "Acabas de abrir el chat de atencion al cliente. Escribe tu PRIMER mensaje "
+            "Acabas de abrir el chat con el asistente. Escribe tu PRIMER mensaje "
             "planteando tu consulta de forma natural y directa. Maximo 2 frases."
         )
         messages = [
@@ -230,14 +240,20 @@ def _generar_mensaje_cliente(historial: list, caso: dict, primer_turno: bool = F
 
 # ── Evaluador ─────────────────────────────────────────────────────────────────
 
-SYSTEM_EVALUADOR_FALLBACK = """Eres un experto en calidad de atencion al cliente para comercio retail.
-Evaluaras una conversacion entre un asistente de IA de atencion al cliente y un cliente final.
+SYSTEM_EVALUADOR_FALLBACK = """Eres un experto en calidad de procesos comerciales para fuerza de venta de
+Coca-Cola. Evaluaras una conversacion entre un asistente de IA de venta en
+terreno y un vendedor.
 
-Debes evaluar en 3 dimensiones y dar recomendaciones concretas de mejora para cada nivel de la ontologia:
+Debes evaluar en 4 dimensiones y dar recomendaciones concretas de mejora para
+cada nivel de la ontologia:
 
-1. **system-prompt**: instrucciones generales del agente (tono, estructura, empatia, personalizacion)
-2. **ontologia-procedimientos**: pasos y procesos de atencion segun el tipo de consulta (estado de pedido, devoluciones, retrasos, cancelaciones, producto defectuoso, quejas)
-3. **ontologia-faq**: preguntas frecuentes sobre politicas y funcionamiento de la tienda (envios, devoluciones, pagos, fidelidad)
+1. **system-prompt**: instrucciones generales del agente (claridad, foco en datos,
+   disciplina de confirmacion antes de tomar pedidos)
+2. **ontologia-procedimientos**: reglas por canal (tradicional, moderno, on premise,
+   off premise, mayoristas, ecommerce, institucional/horeca, vending, directo/indirecto)
+3. **ontologia-descuentos**: uso correcto y disciplinado de la tool de consulta de
+   politica de descuento (nunca inventar un %)
+4. **ontologia-faq**: preguntas frecuentes de un vendedor en terreno
 
 Para cada dimension:
 - Score del 1 al 10
@@ -245,16 +261,17 @@ Para cada dimension:
 - Recomendacion concreta de texto a agregar/modificar en esa ontologia
 
 RESTRICCION CRITICA — todas las recomendaciones deben basarse EXCLUSIVAMENTE en:
-- Mejorar la claridad, empatia y personalizacion del discurso
-- Uso mas efectivo de los datos disponibles (pedido, cliente, nivel de fidelidad, historial)
-- Mejorar los procedimientos y pasos a seguir en cada tipo de gestion
+- Mejorar la claridad y disciplina de uso de las tools (especialmente la de
+  politica de descuento)
+- Uso mas efectivo de los datos disponibles (cuenta, canal, historico de pedidos)
+- Mejorar los procedimientos y reglas de negociacion por canal
 - Completar o precisar informacion de FAQ sobre politicas existentes
 
 NUNCA recomiendes ni insinues:
-- Descuentos, bonificaciones, promociones o regalos
-- Cambios en la politica de precios, envios o devoluciones
-- Compensaciones economicas o cupones
-- Cualquier accion que implique coste o aprobacion comercial
+- Otorgar descuentos, bonificaciones o condiciones fuera de politica
+- Cambios en la politica de precios o condiciones comerciales
+- Compensaciones economicas
+- Cualquier accion que implique coste o aprobacion comercial sin escalar
 
 Ademas:
 - Score global ponderado
@@ -275,7 +292,12 @@ Responde SOLO con JSON valido, sin markdown, con esta estructura exacta:
     "ontologia_procedimientos": {
       "score": 6,
       "problemas": ["problema 1"],
-      "recomendacion": "En la seccion de devoluciones, agregar: ..."
+      "recomendacion": "En la seccion de canal moderno, agregar: ..."
+    },
+    "ontologia_descuentos": {
+      "score": 7,
+      "problemas": [],
+      "recomendacion": null
     },
     "ontologia_faq": {
       "score": 9,
@@ -294,7 +316,7 @@ def evaluar_conversacion(transcripcion: list[dict], caso: dict, decision: str) -
 
     prompt = f"""CASO:
 - Pedido: {caso.get('numero_pedido', 'N/D')} | Estado: {caso.get('estado', 'N/D')}
-- Cliente: {caso.get('cliente', 'N/D')} | Nivel de fidelidad: {caso.get('nivel_fidelidad', 'N/D')}
+- Cuenta: {caso.get('cliente', 'N/D')} | Canal: {caso.get('nivel_fidelidad', 'N/D')}
 - Motivo de la consulta: {caso.get('motivo', 'N/D')}
 - Personalidad: {caso.get('personalidad', 'N/D')}
 - Decision final: {decision}
@@ -302,7 +324,7 @@ def evaluar_conversacion(transcripcion: list[dict], caso: dict, decision: str) -
 TRANSCRIPCION:
 {transcript_text}
 
-Evalua esta conversacion de atencion al cliente."""
+Evalua esta conversacion de un vendedor con el asistente de venta en terreno."""
 
     def _llamar_evaluador(model, use_max_completion_tokens=False):
         kwargs = dict(

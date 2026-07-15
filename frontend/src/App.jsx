@@ -4,6 +4,7 @@ import AdminPanel from "./components/AdminPanel"
 import ChatPanel from "./components/ChatPanel"
 import AutopilotPanel from "./components/AutopilotPanel"
 import PerfilSelector from "./components/PerfilSelector"
+import PortalVendedor from "./components/PortalVendedor"
 import "./App.css"
 
 const MIN_WIDTH = 360
@@ -11,15 +12,22 @@ const MAX_WIDTH = 600
 const DEFAULT_WIDTH = 360
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState("lab")     // "lab" | "test" | "user"
+  const [activeTab, setActiveTab] = useState("portal")     // "portal" | "lab" | "test" | "user"
   const [adminWidth, setAdminWidth] = useState(DEFAULT_WIDTH)
   const [adminCollapsed, setAdminCollapsed] = useState(true)
   const [resetKey, setResetKey] = useState(0)
   const [theme, setTheme] = useState("light")
   const [chatLoading, setChatLoading] = useState(false)
+  const [selectedClienteCodigo, setSelectedClienteCodigo] = useState(null)
   const dragging = useRef(false)
   const startX = useRef(0)
   const startWidth = useRef(0)
+
+  function handleIniciarConversacion(codigoCliente) {
+    setSelectedClienteCodigo(codigoCliente || null)
+    setActiveTab("user")
+    setResetKey(k => k + 1)
+  }
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme)
@@ -73,7 +81,7 @@ export default function App() {
   const showAdmin = activeTab === "lab" || activeTab === "test"
   const adminVisible = showAdmin && !adminCollapsed
 
-  const TAB_TITLES = { lab: "Auto-test", test: "Manual-test", user: "User-test" }
+  const TAB_TITLES = { portal: "Mi cartera", lab: "Auto-test", test: "Manual-test", user: "User-test" }
 
   return (
     <div className="app">
@@ -94,7 +102,7 @@ export default function App() {
                 )}
               </svg>
             </button>
-            <span className="sidebar-title">Smart Assist → Guiado por Ontologías</span>
+            <span className="sidebar-title">Coca-Cola Field Sales → Guiado por Ontologías</span>
           </div>
         )}
         <div className="app-col">
@@ -113,23 +121,30 @@ export default function App() {
           <div className="center-panel">
             <div className="center-nav">
               <button
+                className={`center-nav-item ${activeTab === "portal" ? "active" : ""}`}
+                onClick={() => { setActiveTab("portal") }}
+                title="Mi cartera: consulta las cuentas asignadas, los pedidos en curso y las gestiones de posventa, e inicia una conversación con el asistente ya con la cuenta identificada."
+              >
+                Mi cartera
+              </button>
+              <button
                 className={`center-nav-item ${activeTab === "lab" ? "active" : ""}`}
                 onClick={() => { setActiveTab("lab"); handleReset() }}
-                title="Auto-test: ejecuta una conversación completa simulada entre un cliente IA y el asistente de atención al cliente, guiada por las ontologías activas (prompt, procedimientos y FAQ). Permite evaluar automáticamente la calidad de las respuestas y detectar oportunidades de mejora en las ontologías sin intervención humana."
+                title="Auto-test: ejecuta una conversación completa simulada entre un vendedor IA y el asistente de venta en terreno, guiada por las ontologías activas (prompt, procedimientos, descuentos y FAQ). Permite evaluar automáticamente la calidad de las respuestas y detectar oportunidades de mejora en las ontologías sin intervención humana."
               >
                 Auto-test
               </button>
               <button
                 className={`center-nav-item ${activeTab === "test" ? "active" : ""}`}
                 onClick={() => { setActiveTab("test"); handleReset() }}
-                title="Manual-test: tú interpretas al cliente mientras el asistente SA responde según las ontologías activas. Al finalizar, un evaluador IA analiza la conversación en tres niveles (prompt, procedimientos, FAQ), puntúa cada ontología y propone mejoras concretas que puedes aplicar con un clic."
+                title="Manual-test: tú interpretas al vendedor mientras el asistente responde según las ontologías activas. Al finalizar, un evaluador IA analiza la conversación en cuatro niveles (prompt, procedimientos, descuentos, FAQ), puntúa cada ontología y propone mejoras concretas que puedes aplicar con un clic."
               >
                 Manual-test
               </button>
               <button
                 className={`center-nav-item ${activeTab === "user" ? "active" : ""}`}
-                onClick={() => { setActiveTab("user"); handleReset() }}
-                title="User-test: conversación libre con el asistente de atención al cliente tal como la tendría un cliente real. Permite probar las ontologías en un escenario realista, con radar de motivos, medidor de resolución y sentimiento en tiempo real. Al finalizar se puede evaluar la calidad de las ontologías."
+                onClick={() => { setSelectedClienteCodigo(null); setActiveTab("user"); handleReset() }}
+                title="User-test: conversación libre con el asistente de venta en terreno tal como la tendría un vendedor real. Permite probar las ontologías en un escenario realista, con radar de motivos, medidor de resolución y sentimiento en tiempo real. Al finalizar se puede evaluar la calidad de las ontologías."
               >
                 User-test
               </button>
@@ -172,7 +187,7 @@ export default function App() {
 
               <PerfilSelector />
             </div>
-            {activeTab !== "user" && (
+            {activeTab !== "user" && activeTab !== "portal" && (
               <div className="center-hero">
                 <h1 className="center-hero-title">
                   {TAB_TITLES[activeTab]}
@@ -180,6 +195,9 @@ export default function App() {
               </div>
             )}
             <div className="center-content">
+              {activeTab === "portal" && (
+                <PortalVendedor onIniciarConversacion={handleIniciarConversacion} />
+              )}
               {activeTab === "lab" && (
                 <AutopilotPanel key={`ap-${resetKey}`} onLoadingChange={setChatLoading} />
               )}
@@ -187,7 +205,13 @@ export default function App() {
                 <ChatPanel key={`test-${resetKey}`} onLoadingChange={setChatLoading} onNewCase={handleReset} showEval />
               )}
               {activeTab === "user" && (
-                <ChatPanel key={`user-${resetKey}`} onLoadingChange={setChatLoading} onNewCase={handleReset} showEval />
+                <ChatPanel
+                  key={`user-${resetKey}-${selectedClienteCodigo || "none"}`}
+                  onLoadingChange={setChatLoading}
+                  onNewCase={handleReset}
+                  showEval
+                  initialClienteCodigo={selectedClienteCodigo}
+                />
               )}
             </div>
           </div>

@@ -1,0 +1,207 @@
+.portal-vendedor {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.portal-nav {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 14px 32px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.portal-nav-item {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: "Alliance No.1", sans-serif;
+  font-size: 13px;
+  font-weight: 400;
+  cursor: pointer;
+  transition: color 0.15s;
+  padding: 6px 0;
+}
+
+.portal-nav-item:hover { color: var(--text); }
+
+.portal-nav-item.active {
+  color: var(--text);
+  font-weight: 500;
+  border-bottom: 2px solid var(--text);
+}
+
+.portal-nav-spacer { flex: 1; }
+
+.portal-nav-new {
+  height: 28px;
+  padding: 0 14px;
+  border-radius: 2px;
+  border: 1px solid var(--text);
+  background: transparent;
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.portal-nav-new:hover { background: var(--text); color: var(--bg-panel); }
+
+.portal-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 20px 32px;
+  min-height: 0;
+}
+
+.portal-search {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 16px;
+  flex-shrink: 0;
+}
+
+.portal-search input,
+.portal-search select {
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 2px;
+  border: 1px solid var(--border);
+  background: var(--bg-input);
+  color: var(--text);
+  font-size: 13px;
+  font-family: inherit;
+  min-width: 260px;
+}
+
+.portal-search input:focus,
+.portal-search select:focus {
+  outline: none;
+  border-color: var(--text);
+}
+
+.portal-search button {
+  height: 34px;
+  padding: 0 18px;
+  border-radius: 2px;
+  border: 1px solid var(--text);
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.portal-search button:hover { background: var(--text); color: var(--bg-panel); }
+
+.portal-empty {
+  color: var(--text-faint);
+  font-size: 13px;
+  font-style: italic;
+  padding: 24px 0;
+}
+
+.portal-error { color: #c0392b; font-style: normal; }
+
+.portal-table-wrap {
+  flex: 1;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+}
+
+.portal-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: "Alliance No.1", sans-serif;
+  font-size: 12px;
+}
+
+.portal-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--bg-panel);
+  padding: 10px 14px;
+  text-align: left;
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.portal-table tbody tr:hover { background: var(--bg-hover); }
+
+.portal-table tbody td {
+  padding: 10px 14px;
+  color: var(--text);
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+  white-space: nowrap;
+}
+
+.portal-numero { font-weight: 500; }
+
+.portal-muted { color: var(--text-muted); font-size: 11px; }
+
+.portal-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.portal-badge.canal-moderno,
+.portal-badge.canal-mayorista,
+.portal-badge.canal-institucional_horeca { color: var(--text); border-color: var(--border-focus); }
+
+.portal-badge.pedido-estado-aprobado,
+.portal-badge.pedido-estado-facturado,
+.portal-badge.pedido-estado-entregado { color: var(--text); border-color: var(--border-focus); }
+
+.portal-badge.pedido-estado-rechazado,
+.portal-badge.pedido-estado-cancelado { color: var(--text-muted); }
+
+.portal-badge.gestion-estado-abierto,
+.portal-badge.gestion-estado-en_gestion { color: var(--text); border-color: var(--border-focus); }
+
+.portal-badge.prioridad-alta { color: var(--text); border-color: var(--border-focus); }
+
+.portal-action-btn {
+  height: 26px;
+  padding: 0 12px;
+  border-radius: 2px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+
+.portal-action-btn:hover {
+  background: var(--text);
+  color: var(--bg-panel);
+  border-color: var(--text);
+}

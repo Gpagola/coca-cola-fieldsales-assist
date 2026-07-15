@@ -9,20 +9,20 @@ import "./AutopilotPanel.css"
 const API = import.meta.env.VITE_API_URL || "/api"
 
 const TOOL_LABELS = {
-  buscar_pedido:              "Buscando pedido...",
-  buscar_cliente:             "Buscando cliente...",
-  buscar_producto:            "Consultando catálogo...",
-  ontologia_procedimientos:   "Consultando procedimientos...",
-  ontologia_faq:              "Consultando FAQ...",
-  analizar_documento:         "Analizando documento...",
-  consultar_reclamos:         "Consultando reclamos...",
-  abrir_reclamo:              "Abriendo reclamo...",
-  cancelar_pedido:            "Cancelando pedido...",
-  actualizar_direccion_envio: "Actualizando dirección...",
-  cambiar_metodo_pago:        "Cambiando método de pago...",
-  iniciar_devolucion:         "Tramitando devolución...",
-  marcar_incidencia_entrega:  "Registrando incidencia...",
-  agregar_nota_pedido:        "Anotando en el pedido...",
+  consultar_cuenta_cliente:      "Consultando cuenta...",
+  consultar_historico_pedidos:   "Consultando histórico...",
+  buscar_producto:                "Consultando catálogo...",
+  consultar_politica_descuento:  "Consultando política de descuento...",
+  ontologia_procedimientos:      "Consultando procedimientos...",
+  ontologia_descuentos:          "Consultando ontología de descuentos...",
+  ontologia_faq:                 "Consultando FAQ...",
+  analizar_documento:            "Analizando documento...",
+  consultar_gestiones_posventa:  "Consultando gestiones de posventa...",
+  crear_pedido:                  "Registrando pedido...",
+  cambiar_condicion_pago_pedido: "Actualizando condición de pago...",
+  cancelar_pedido:               "Cancelando pedido...",
+  agregar_nota_pedido:           "Anotando en el pedido...",
+  abrir_gestion_posventa:        "Abriendo gestión de posventa...",
 }
 
 function formatAssistantMsg(text) {

@@ -11,7 +11,7 @@ const API = import.meta.env.VITE_API_URL || "/api"
 const ACCEPTED = ".pdf,.jpg,.jpeg,.png,.webp"
 
 
-export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false }) {
+export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false, initialClienteCodigo = null }) {
   const [sessionId, setSessionId]   = useState(null)
   const [messages, setMessages]     = useState([])
   const [input, setInput]           = useState("")
@@ -123,17 +123,62 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
       setSessionId(session_id)
       setMessages([{
         role: "assistant",
-        content: "¡Hola! Soy tu asistente de atención al cliente. ¿En qué puedo ayudarte hoy? Cuéntame sobre qué quieres que hablemos."
+        content: initialClienteCodigo
+          ? `¡Hola! Soy tu asistente de venta en terreno. Ya tengo cargada la cuenta ${initialClienteCodigo}, dame un segundo para traer su ficha.`
+          : "¡Hola! Soy tu asistente de venta en terreno de Coca-Cola. Decime el código de cliente (CLI-XXXX) de la cuenta con la que vas a trabajar."
       }])
-      // Cargar pedidos y mostrar picker
-      try {
-        const op = await fetch(`${API}/autopilot/opciones`)
-        const data = await op.json()
-        if (data.pedidos?.length) {
-          setPedidoList(data.pedidos)
-          setShowPedidoPicker(true)
+
+      if (initialClienteCodigo) {
+        // Cuenta ya seleccionada desde el Portal Vendedor: la identificamos automáticamente.
+        setLoading(true); onLoadingChange?.(true)
+        const controller = new AbortController()
+        abortRef.current = controller
+        try {
+          let accumulated = ""
+          let started = false
+          await streamChat(
+            `Mi codigo de cliente es ${initialClienteCodigo}`, session_id, controller,
+            (token) => {
+              accumulated += token
+              if (!started) {
+                started = true
+                setIsStreaming(true)
+                setMessages(prev => [...prev, { role: "assistant", content: accumulated }])
+              } else {
+                setMessages(prev => {
+                  const msgs = [...prev]
+                  msgs[msgs.length - 1] = { role: "assistant", content: accumulated }
+                  return msgs
+                })
+              }
+            },
+            setAgentStatus, setPedido, (s) => setSuggestions(s), undefined,
+            (profile) => {
+              setRiskProfile(profile)
+              if (profile.resolucion != null) setRetention(profile.resolucion)
+              if (profile.sentimiento != null) setSentimentPts(prev => [...prev, profile.sentimiento])
+            }
+          )
+        } catch (e) {
+          if (e.name !== "AbortError")
+            setMessages(prev => [...prev, { role: "assistant", content: `⚠️ Error: ${e.message}` }])
+        } finally {
+          setLoading(false); onLoadingChange?.(false)
+          setIsStreaming(false)
+          setAgentStatus("")
+          abortRef.current = null
         }
-      } catch {}
+      } else {
+        // Cargar pedidos y mostrar picker (solo cuando no se llego con una cuenta ya identificada)
+        try {
+          const op = await fetch(`${API}/autopilot/opciones`)
+          const data = await op.json()
+          if (data.pedidos?.length) {
+            setPedidoList(data.pedidos)
+            setShowPedidoPicker(true)
+          }
+        } catch {}
+      }
     }
     init()
   }, [])
@@ -303,64 +348,43 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
       <div className="session-bar">
         {pedido ? (<>
           <span className="session-item">
-            <span className="session-label">Pedido</span>
+            <span className="session-label">Cuenta</span>
             <span className="session-value">{pedido.numero}</span>
           </span>
           {pedido.cliente && (<>
             <span className="session-sep">·</span>
             <span className="session-item">
-              <span className="session-label">Cliente</span>
+              <span className="session-label">Nombre comercial</span>
               <span className="session-value">{pedido.cliente}</span>
             </span>
           </>)}
           {pedido.estado && (<>
             <span className="session-sep">·</span>
             <span className="session-item">
-              <span className="session-label">Estado</span>
+              <span className="session-label">Canal</span>
               <span className={`session-badge estado-${pedido.estado?.toLowerCase().replace(/\s+/g, "-")}`}>
                 {pedido.estado}
               </span>
             </span>
           </>)}
-          {pedido.fecha_pedido && (<>
-            <span className="session-sep">·</span>
-            <span className="session-item">
-              <span className="session-label">Fecha</span>
-              <span className="session-value">{pedido.fecha_pedido}</span>
-            </span>
-          </>)}
-          {pedido.total != null && (<>
-            <span className="session-sep">·</span>
-            <span className="session-item">
-              <span className="session-label">Total</span>
-              <span className="session-value">{pedido.total} EUR</span>
-            </span>
-          </>)}
           {pedido.metodo_pago && (<>
             <span className="session-sep">·</span>
             <span className="session-item">
-              <span className="session-label">Pago</span>
+              <span className="session-label">Condición de pago</span>
               <span className="session-value">{pedido.metodo_pago}</span>
             </span>
           </>)}
           {pedido.tracking && (<>
             <span className="session-sep">·</span>
             <span className="session-item">
-              <span className="session-label">Tracking</span>
+              <span className="session-label">Distribución</span>
               <span className="session-value">{pedido.tracking}</span>
-            </span>
-          </>)}
-          {pedido.entrega_estimada && (<>
-            <span className="session-sep">·</span>
-            <span className="session-item">
-              <span className="session-label">Entrega est.</span>
-              <span className="session-value">{pedido.entrega_estimada}</span>
             </span>
           </>)}
           {pedido.nivel_fidelidad && (<>
             <span className="session-sep">·</span>
             <span className="session-item">
-              <span className="session-label">Fidelidad</span>
+              <span className="session-label">Tamaño canal</span>
               <span className={`session-badge fidelidad-${pedido.nivel_fidelidad?.toLowerCase()}`}>
                 {pedido.nivel_fidelidad}
               </span>
@@ -369,12 +393,12 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
           {pedido.ciudad && (<>
             <span className="session-sep">·</span>
             <span className="session-item">
-              <span className="session-label">Ciudad</span>
+              <span className="session-label">Ciudad / zona</span>
               <span className="session-value">{pedido.ciudad}</span>
             </span>
           </>)}
         </>) : (
-          <span className="session-empty">Sin pedido cargado</span>
+          <span className="session-empty">Sin cuenta cargada</span>
         )}
       </div>
 
@@ -452,10 +476,10 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
                 <thead>
                   <tr>
                     <th>Pedido</th>
-                    <th>Cliente</th>
+                    <th>Cuenta</th>
                     <th>Estado</th>
                     <th>Total</th>
-                    <th>Fidelidad</th>
+                    <th>Canal</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -468,7 +492,7 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
                       <td className="pp-numero">{p.numero_pedido}</td>
                       <td>{p.cliente || "—"}</td>
                       <td><span className={`pp-badge estado-${p.estado?.toLowerCase().replace(/\s+/g, "-")}`}>{p.estado}</span></td>
-                      <td>{p.total?.toFixed ? p.total.toFixed(2) : p.total} EUR</td>
+                      <td>{p.total?.toFixed ? p.total.toFixed(2) : p.total}</td>
                       <td><span className={`pp-badge fidelidad-${p.nivel_fidelidad?.toLowerCase()}`}>{p.nivel_fidelidad}</span></td>
                     </tr>
                   ))}

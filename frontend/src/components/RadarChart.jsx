@@ -2,12 +2,12 @@ import { useState, useEffect, useRef } from "react"
 import "./RadarChart.css"
 
 const DIMS = [
-  { key: "pedido",     label: "Pedido" },
-  { key: "envio",      label: "Envío" },
-  { key: "devolucion", label: "Devolución" },
-  { key: "producto",   label: "Producto" },
-  { key: "pago",       label: "Pago" },
-  { key: "queja",      label: "Queja" },
+  { key: "pedido",       label: "Pedido" },
+  { key: "logistica",    label: "Logística" },
+  { key: "posventa",     label: "Posventa" },
+  { key: "catalogo",     label: "Catálogo" },
+  { key: "pago",         label: "Pago" },
+  { key: "escalamiento", label: "Escalam." },
 ]
 
 const N = DIMS.length
@@ -68,7 +68,7 @@ export default function RadarChart({ data }) {
   const polyStr = pts.map(([x, y]) => `${x},${y}`).join(" ")
 
   return (
-    <div className="radar-chart" title="Radar de tipos de consulta: muestra en tiempo real los temas que el cliente menciona durante la conversación (pedido, envío, devolución, producto, pago y queja). Permite identificar qué áreas de las ontologías necesitan refuerzo para cubrir mejor cada tipo de gestión de atención al cliente.">
+    <div className="radar-chart" title="Radar de tipos de consulta: muestra en tiempo real los temas que el vendedor menciona durante la conversación (pedido, logística, posventa, catálogo, pago y escalamiento). Permite identificar qué áreas de las ontologías necesitan refuerzo para cubrir mejor cada tipo de gestión comercial.">
       <div className="radar-header">
         <span className="radar-title">Tipos de consulta</span>
         {!hasData && <span className="radar-waiting">Esperando conversación</span>}

@@ -1,11 +1,15 @@
 """
-Script para crear la BBDD SmartAssist y cargar datos mock de retail.
+Script para crear la BBDD Coca-Cola Field Sales Assist y cargar datos mock B2B.
 Ejecutar una sola vez: python setup_db.py
+
+IMPORTANTE: este script crea/puebla el schema definido en DB_NAME (.env).
+Debe apuntar a un schema NUEVO y separado (ej. 'cocacola_fieldsales'), nunca
+al schema original de SMART-assist.
 """
 
 import os
 import random
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 import mysql.connector
 from dotenv import load_dotenv
 
@@ -13,7 +17,7 @@ load_dotenv()
 
 DB_HOST     = os.getenv("DB_HOST")
 DB_PORT     = int(os.getenv("DB_PORT", 3306))
-DB_NAME     = os.getenv("DB_NAME", "SmartAssist")
+DB_NAME     = os.getenv("DB_NAME", "cocacola_fieldsales")
 DB_USER     = os.getenv("DB_USER")
 DB_PASSWORD = os.getenv("DB_PASSWORD")
 
@@ -27,77 +31,106 @@ DB_CONFIG = {
 
 # ── Definicion de tablas ─────────────────────────────────────────────────────
 
-CREATE_CLIENTES = """
-CREATE TABLE IF NOT EXISTS clientes (
-    id               INT AUTO_INCREMENT PRIMARY KEY,
-    nombre           VARCHAR(100) NOT NULL,
-    email            VARCHAR(150),
-    telefono         VARCHAR(20),
-    nivel_fidelidad  VARCHAR(20)  NOT NULL DEFAULT 'Basico',
-    fecha_registro   DATE         NOT NULL,
-    ciudad           VARCHAR(50),
-    total_compras    DECIMAL(10,2) NOT NULL DEFAULT 0,
-    num_pedidos      INT          NOT NULL DEFAULT 0
+CREATE_EMPRESAS_CLIENTES = """
+CREATE TABLE IF NOT EXISTS empresas_clientes (
+    id                      INT AUTO_INCREMENT PRIMARY KEY,
+    codigo_cliente          VARCHAR(20)  NOT NULL UNIQUE,
+    nombre_comercial        VARCHAR(150) NOT NULL,
+    razon_social            VARCHAR(150),
+    canal                   VARCHAR(30)  NOT NULL,
+    tipo_distribucion       VARCHAR(20)  NOT NULL DEFAULT 'indirecto',
+    tamano_canal            VARCHAR(20)  NOT NULL DEFAULT 'mediano',
+    ciudad                  VARCHAR(80),
+    zona                    VARCHAR(80),
+    condicion_pago_habitual VARCHAR(20)  NOT NULL DEFAULT 'contado',
+    vendedor_asignado       VARCHAR(100),
+    fecha_alta              DATE         NOT NULL,
+    activo                  TINYINT(1)   NOT NULL DEFAULT 1,
+    notas                   TEXT
 );
 """
 
 CREATE_PRODUCTOS = """
 CREATE TABLE IF NOT EXISTS productos (
-    id          INT AUTO_INCREMENT PRIMARY KEY,
-    nombre      VARCHAR(150)   NOT NULL,
-    categoria   VARCHAR(50)    NOT NULL,
-    precio      DECIMAL(10,2)  NOT NULL,
-    stock       INT            NOT NULL DEFAULT 0,
-    descripcion TEXT
+    id                INT AUTO_INCREMENT PRIMARY KEY,
+    codigo_sku        VARCHAR(30)   NOT NULL UNIQUE,
+    nombre            VARCHAR(150)  NOT NULL,
+    categoria         VARCHAR(40)   NOT NULL,
+    presentacion_tipo VARCHAR(20)   NOT NULL,
+    formato           VARCHAR(30)   NOT NULL,
+    litros            DECIMAL(6,3)  NOT NULL,
+    precio_lista      DECIMAL(10,2) NOT NULL,
+    activo            TINYINT(1)    NOT NULL DEFAULT 1,
+    descripcion       TEXT
 );
 """
 
 CREATE_PEDIDOS = """
 CREATE TABLE IF NOT EXISTS pedidos (
-    numero_pedido          VARCHAR(20) PRIMARY KEY,
-    cliente_id             INT         NOT NULL,
-    fecha_pedido           DATE        NOT NULL,
-    estado                 VARCHAR(30) NOT NULL DEFAULT 'pendiente',
-    total                  DECIMAL(10,2) NOT NULL,
-    metodo_pago            VARCHAR(30),
-    direccion_envio        VARCHAR(200),
-    tracking               VARCHAR(50),
-    fecha_envio            DATE,
-    fecha_entrega_estimada DATE,
-    fecha_entrega_real     DATE,
-    notas                  TEXT,
-    FOREIGN KEY (cliente_id) REFERENCES clientes(id)
+    numero_pedido              VARCHAR(20) PRIMARY KEY,
+    empresa_cliente_id         INT NOT NULL,
+    fecha_pedido                DATE NOT NULL,
+    estado                     VARCHAR(20) NOT NULL DEFAULT 'solicitado',
+    canal_venta                VARCHAR(30) NOT NULL,
+    condicion_pago             VARCHAR(20) NOT NULL,
+    vendedor                   VARCHAR(100),
+    descuento_aplicado_pct     DECIMAL(5,2) NOT NULL DEFAULT 0,
+    subtotal                   DECIMAL(12,2) NOT NULL DEFAULT 0,
+    total                      DECIMAL(12,2) NOT NULL DEFAULT 0,
+    notas                      TEXT,
+    fecha_actualizacion_estado DATETIME,
+    FOREIGN KEY (empresa_cliente_id) REFERENCES empresas_clientes(id)
 );
 """
 
 CREATE_DETALLE_PEDIDO = """
 CREATE TABLE IF NOT EXISTS detalle_pedido (
-    id              INT AUTO_INCREMENT PRIMARY KEY,
-    numero_pedido   VARCHAR(20)   NOT NULL,
-    producto_id     INT           NOT NULL,
-    cantidad        INT           NOT NULL DEFAULT 1,
-    precio_unitario DECIMAL(10,2) NOT NULL,
+    id                    INT AUTO_INCREMENT PRIMARY KEY,
+    numero_pedido         VARCHAR(20)   NOT NULL,
+    producto_id           INT           NOT NULL,
+    cantidad              INT           NOT NULL DEFAULT 1,
+    precio_unitario       DECIMAL(10,2) NOT NULL,
+    descuento_pct         DECIMAL(5,2)  NOT NULL DEFAULT 0,
+    precio_neto_unitario  DECIMAL(10,2) NOT NULL,
+    subtotal_linea        DECIMAL(12,2) NOT NULL,
     FOREIGN KEY (numero_pedido) REFERENCES pedidos(numero_pedido),
     FOREIGN KEY (producto_id)   REFERENCES productos(id)
 );
 """
 
-CREATE_RECLAMOS = """
-CREATE TABLE IF NOT EXISTS reclamos (
-    id              INT AUTO_INCREMENT PRIMARY KEY,
-    numero_reclamo  VARCHAR(20)  NOT NULL UNIQUE,
-    numero_pedido   VARCHAR(20),
-    cliente_id      INT          NOT NULL,
-    tipo            VARCHAR(30)  NOT NULL,
-    descripcion     TEXT         NOT NULL,
-    estado          VARCHAR(20)  NOT NULL DEFAULT 'abierto',
-    prioridad       VARCHAR(10)  NOT NULL DEFAULT 'media',
-    canal           VARCHAR(20)  NOT NULL DEFAULT 'chat',
-    fecha_apertura  DATETIME     NOT NULL,
-    fecha_cierre    DATETIME,
-    resolucion      TEXT,
+CREATE_POLITICAS_DESCUENTO = """
+CREATE TABLE IF NOT EXISTS politicas_descuento (
+    id                      INT AUTO_INCREMENT PRIMARY KEY,
+    canal                   VARCHAR(30)  NOT NULL,
+    tamano_canal            VARCHAR(20),
+    condicion_pago          VARCHAR(20)  NOT NULL,
+    volumen_min_litros      DECIMAL(10,2) NOT NULL DEFAULT 0,
+    volumen_max_litros      DECIMAL(10,2),
+    descuento_pct           DECIMAL(5,2)  NOT NULL,
+    condiciones_adicionales VARCHAR(255),
+    prioridad               INT NOT NULL DEFAULT 0,
+    activo                  TINYINT(1) NOT NULL DEFAULT 1,
+    INDEX idx_politica_lookup (canal, condicion_pago, activo)
+);
+"""
+
+CREATE_GESTIONES_POSVENTA = """
+CREATE TABLE IF NOT EXISTS gestiones_posventa (
+    id                  INT AUTO_INCREMENT PRIMARY KEY,
+    numero_gestion      VARCHAR(20) NOT NULL UNIQUE,
+    numero_pedido       VARCHAR(20),
+    empresa_cliente_id  INT NOT NULL,
+    tipo                VARCHAR(30) NOT NULL,
+    descripcion         TEXT NOT NULL,
+    estado              VARCHAR(20) NOT NULL DEFAULT 'abierto',
+    prioridad           VARCHAR(10) NOT NULL DEFAULT 'media',
+    canal_reporte       VARCHAR(20) NOT NULL DEFAULT 'chat',
+    vendedor            VARCHAR(100),
+    fecha_apertura      DATETIME NOT NULL,
+    fecha_cierre        DATETIME,
+    resolucion          TEXT,
     FOREIGN KEY (numero_pedido) REFERENCES pedidos(numero_pedido) ON DELETE SET NULL,
-    FOREIGN KEY (cliente_id)    REFERENCES clientes(id)
+    FOREIGN KEY (empresa_cliente_id) REFERENCES empresas_clientes(id)
 );
 """
 
@@ -127,597 +160,621 @@ CREATE TABLE IF NOT EXISTS ontologias (
 """
 
 # Ontologias que pertenecen a un perfil (vs globales como autopilot-*)
-PROFILE_ONTOLOGIES = ("system-prompt", "ontologia-procedimientos", "ontologia-faq")
+PROFILE_ONTOLOGIES = ("system-prompt", "ontologia-procedimientos", "ontologia-descuentos", "ontologia-faq")
 
-# ── Datos mock: productos ───────────────────────────────────────────────────
+# ── Catalogo de canales ──────────────────────────────────────────────────────
 
-PRODUCTOS_MOCK = [
-    # Ropa mujer
-    ("Vestido Midi Floral", "Ropa Mujer", 49.99, 45, "Vestido midi con estampado floral, tela fluida, perfecto para primavera-verano."),
-    ("Blazer Oversize Lino", "Ropa Mujer", 79.99, 30, "Blazer oversize en lino natural, corte relajado, ideal para entretiempo."),
-    ("Jeans Wide Leg", "Ropa Mujer", 44.99, 60, "Jeans de pierna ancha, tiro alto, denim 100% algodon."),
-    ("Camiseta Basica Algodon Organico", "Ropa Mujer", 19.99, 120, "Camiseta basica en algodon organico certificado, corte recto."),
-    ("Falda Plisada Saten", "Ropa Mujer", 39.99, 35, "Falda midi plisada en saten con cintura elastica."),
-    # Ropa hombre
-    ("Camisa Oxford Slim", "Ropa Hombre", 34.99, 80, "Camisa Oxford de algodon, corte slim fit, cuello con boton."),
-    ("Pantalon Chino Regular", "Ropa Hombre", 39.99, 70, "Pantalon chino de algodon stretch, corte regular, 4 colores."),
-    ("Sudadera Capucha Basica", "Ropa Hombre", 29.99, 90, "Sudadera con capucha, interior afelpado, bolsillo canguro."),
-    ("Polo Pique Classic", "Ropa Hombre", 24.99, 100, "Polo de pique de algodon, corte clasico, logo bordado."),
-    ("Bermuda Cargo", "Ropa Hombre", 34.99, 55, "Bermuda cargo con bolsillos laterales, cintura ajustable."),
-    # Calzado
-    ("Sneakers Urban White", "Calzado", 69.99, 40, "Zapatillas urbanas blancas, suela de goma, piel sintetica."),
-    ("Botin Chelsea Piel", "Calzado", 89.99, 25, "Botin Chelsea en piel genuina, elastico lateral, suela track."),
-    ("Sandalia Plataforma", "Calzado", 49.99, 30, "Sandalia con plataforma de 5cm, tiras cruzadas, piel sintetica."),
-    ("Mocasin Clasico", "Calzado", 59.99, 35, "Mocasin clasico en piel, suela flexible, disponible en negro y marron."),
-    ("Deportiva Running Pro", "Calzado", 79.99, 50, "Zapatilla de running con amortiguacion premium y malla transpirable."),
-    # Accesorios
-    ("Bolso Tote Piel Vegana", "Accesorios", 54.99, 40, "Bolso tote grande en piel vegana, cierre magnetico, bolsillo interior."),
-    ("Cinturon Reversible", "Accesorios", 24.99, 60, "Cinturon reversible negro/marron, hebilla metalica clasica."),
-    ("Gafas de Sol Retro", "Accesorios", 29.99, 50, "Gafas de sol estilo retro, proteccion UV400, montura acetato."),
-    ("Bufanda Lana Merino", "Accesorios", 34.99, 40, "Bufanda en lana merino extra suave, 180x30cm."),
-    ("Mochila Urban Canvas", "Accesorios", 44.99, 35, "Mochila urbana en canvas resistente al agua, compartimento portatil."),
-    # Hogar / Lifestyle
-    ("Vela Aromatica Soja", "Hogar", 18.99, 80, "Vela aromatica de cera de soja, 40h de duracion, aromas naturales."),
-    ("Set Toallas Premium", "Hogar", 39.99, 30, "Set de 4 toallas 100% algodon egipcio, 600gsm."),
-    ("Cojin Decorativo Lino", "Hogar", 22.99, 45, "Cojin decorativo en lino natural, relleno incluido, 45x45cm."),
-    ("Taza Ceramica Artesanal", "Hogar", 14.99, 100, "Taza de ceramica artesanal, 350ml, apta para lavavajillas."),
-    ("Difusor de Aromas", "Hogar", 24.99, 50, "Difusor de varillas con aceites esenciales naturales, 200ml."),
-]
-
-# ── Datos mock: clientes ────────────────────────────────────────────────────
-
-_NOMBRES = [
-    "Maria", "Carlos", "Ana", "Roberto", "Luisa", "Pedro", "Carmen", "Javier",
-    "Isabel", "Fernando", "Elena", "Miguel", "Laura", "Antonio", "Sofia",
-    "Francisco", "Marta", "Jose", "Patricia", "Manuel", "Raquel", "Alberto",
-    "Cristina", "Daniel", "Beatriz", "Alejandro", "Lucia", "David", "Paula",
-    "Jorge", "Alicia", "Sergio", "Rosa", "Andres", "Pilar", "Diego",
-    "Teresa", "Oscar", "Victoria", "Adrian", "Natalia", "Ruben", "Sara",
-    "Enrique", "Irene", "Guillermo", "Claudia", "Marcos", "Eva", "Hugo",
-]
-
-_APELLIDOS1 = [
-    "Garcia", "Martinez", "Lopez", "Rodriguez", "Jimenez", "Fernandez", "Gomez",
-    "Sanchez", "Perez", "Diaz", "Moreno", "Munoz", "Alvarez", "Romero", "Torres",
-    "Navarro", "Dominguez", "Vazquez", "Ramos", "Gil", "Serrano", "Blanco",
-    "Molina", "Morales", "Suarez", "Ortega",
-]
-
-_APELLIDOS2 = [
-    "Ruiz", "Hernandez", "Castro", "Vargas", "Medina", "Herrera", "Delgado",
-    "Pena", "Cruz", "Flores", "Reyes", "Aguilar", "Leon", "Campos", "Vega",
-    "Prieto", "Fuentes", "Cabrera", "Calvo", "Mendez",
-]
-
-_CIUDADES = [
-    "Madrid", "Barcelona", "Valencia", "Sevilla", "Bilbao", "Malaga",
-    "Zaragoza", "Alicante", "Murcia", "Palma de Mallorca", "Las Palmas",
-    "Valladolid", "Vigo", "Gijon", "Granada", "A Coruna",
-]
-
-_NIVELES = ["Basico", "Premium", "VIP"]
-_METODOS_PAGO = ["Tarjeta credito", "Tarjeta debito", "PayPal", "Bizum", "Transferencia"]
-_ESTADOS_PEDIDO = ["pendiente", "procesando", "enviado", "entregado", "cancelado", "devuelto"]
+CANALES = ["tradicional", "moderno", "on_premise", "off_premise", "mayorista", "ecommerce", "institucional_horeca", "vending"]
+TIPOS_DISTRIBUCION = ["directo", "indirecto"]
+TAMANOS_CANAL = ["pequeno", "mediano", "grande"]
+CONDICIONES_PAGO = ["contado", "credito"]
+_ESTADOS_PEDIDO = ["solicitado", "en_revision", "aprobado", "facturado", "entregado", "rechazado", "cancelado"]
 
 random.seed(42)
 
+# ── Datos mock: productos (SKUs Coca-Cola) ──────────────────────────────────
 
-def _gen_clientes(n=50):
-    clientes = []
+PRODUCTOS_MOCK = [
+    # codigo_sku, nombre, categoria, presentacion_tipo, formato, litros, precio_lista, descripcion
+    ("CC-355-RET",  "Coca-Cola Original",        "gaseosas",     "retornable",    "botella 355ml",  0.355, 450.00, "Gaseosa cola clasica, botella retornable de vidrio."),
+    ("CC-500-NR",   "Coca-Cola Original",        "gaseosas",     "no_retornable", "botella 500ml",  0.500, 620.00, "Gaseosa cola clasica, botella PET individual."),
+    ("CC-1500-NR",  "Coca-Cola Original",        "gaseosas",     "no_retornable", "botella 1.5L",   1.500, 1150.00, "Gaseosa cola clasica, formato familiar PET."),
+    ("CC-2250-RET", "Coca-Cola Original",        "gaseosas",     "retornable",    "botella 2.25L",  2.250, 1400.00, "Gaseosa cola clasica, formato hogar retornable."),
+    ("CCZ-500-NR",  "Coca-Cola Zero",            "gaseosas",     "no_retornable", "botella 500ml",  0.500, 620.00, "Gaseosa cola sin azucar, botella PET individual."),
+    ("CCZ-1500-NR", "Coca-Cola Zero",            "gaseosas",     "no_retornable", "botella 1.5L",   1.500, 1150.00, "Gaseosa cola sin azucar, formato familiar PET."),
+    ("SPR-500-NR",  "Sprite",                    "gaseosas",     "no_retornable", "botella 500ml",  0.500, 600.00, "Gaseosa lima-limon, botella PET individual."),
+    ("SPR-1500-NR", "Sprite",                    "gaseosas",     "no_retornable", "botella 1.5L",   1.500, 1120.00, "Gaseosa lima-limon, formato familiar PET."),
+    ("FAN-500-NR",  "Fanta Naranja",              "gaseosas",     "no_retornable", "botella 500ml",  0.500, 600.00, "Gaseosa sabor naranja, botella PET individual."),
+    ("FAN-1500-NR", "Fanta Naranja",              "gaseosas",     "no_retornable", "botella 1.5L",   1.500, 1120.00, "Gaseosa sabor naranja, formato familiar PET."),
+    ("LAT-354-CJ",  "Coca-Cola Original Lata",    "gaseosas",     "no_retornable", "lata 354ml x24",  8.496, 9800.00, "Pack de 24 latas, formato para on premise / vending."),
+    ("AGB-500-NR",  "Villa Cristal Agua sin gas", "aguas",        "no_retornable", "botella 500ml",  0.500, 380.00, "Agua mineral sin gas, botella individual."),
+    ("AGC-500-NR",  "Villa Cristal Agua con gas", "aguas",        "no_retornable", "botella 500ml",  0.500, 400.00, "Agua mineral con gas, botella individual."),
+    ("AGB-2000-NR", "Villa Cristal Agua sin gas", "aguas",        "no_retornable", "bidon 2L",       2.000, 950.00, "Agua mineral sin gas, formato familiar."),
+    ("SAB-500-NR",  "Quatro Pomelo",              "saborizadas",  "no_retornable", "botella 500ml",  0.500, 580.00, "Bebida saborizada citrica, botella individual."),
+    ("SAB-1500-NR", "Quatro Pomelo",              "saborizadas",  "no_retornable", "botella 1.5L",   1.500, 1080.00, "Bebida saborizada citrica, formato familiar."),
+    ("JUG-200-NR",  "Cepita Naranja",             "jugos",        "no_retornable", "botella 200ml",  0.200, 350.00, "Jugo de naranja, formato individual."),
+    ("JUG-1000-NR", "Cepita Naranja",             "jugos",        "no_retornable", "botella 1L",     1.000, 980.00, "Jugo de naranja, formato familiar."),
+    ("ISO-500-NR",  "Aquarius Isotonica",         "isotonicas",   "no_retornable", "botella 500ml",  0.500, 650.00, "Bebida isotonica, botella individual."),
+    ("ENE-473-NR",  "Monster Energy",             "energizantes", "no_retornable", "lata 473ml",     0.473, 1350.00, "Bebida energizante, lata individual."),
+]
+
+# ── Datos mock: empresas cliente (cuentas B2B por canal) ────────────────────
+
+_NOMBRES_NEGOCIO = [
+    "Don Manuel", "La Esquina", "El Sol", "San Martin", "Del Centro", "La Familia",
+    "El Progreso", "Norte", "Sur", "La Union", "El Ceibo", "Las Flores", "Central",
+    "El Rincon", "La Estrella", "Del Puerto", "San Jose", "La Plaza", "El Faro",
+    "Del Parque", "La Merced", "El Mirador", "Santa Rita", "La Loma", "El Trebol",
+]
+
+_ZONAS = [
+    ("Buenos Aires", "CABA Norte"), ("Buenos Aires", "CABA Sur"), ("Buenos Aires", "GBA Oeste"),
+    ("Cordoba", "Capital"), ("Rosario", "Centro"), ("Mendoza", "Gran Mendoza"),
+    ("La Plata", "Centro"), ("Mar del Plata", "Costa"), ("Tucuman", "Capital"),
+    ("Salta", "Capital"),
+]
+
+_CANAL_TEMPLATES = {
+    "tradicional":           ["Kiosco {n}", "Almacen {n}", "Autoservicio {n}", "Despensa {n}"],
+    "moderno":               ["Supermercado {n}", "Hipermercado {n}", "Autoservicio Mayorista {n}"],
+    "on_premise":            ["Bar {n}", "Restaurante {n}", "Boliche {n}", "Cerveceria {n}"],
+    "off_premise":           ["Bebidas para Llevar {n}", "Drugstore 24hs {n}", "Vinoteca {n}"],
+    "mayorista":             ["Distribuidora {n} S.A.", "Mayorista {n}"],
+    "ecommerce":             ["{n} Market Online", "Tienda Online {n}"],
+    "institucional_horeca":  ["Hotel {n}", "Catering {n}", "Comedor Corporativo {n}", "Complejo de Eventos {n}"],
+    "vending":               ["Vending Edificio {n}", "Maquinas Expendedoras {n}"],
+}
+
+_CANAL_WEIGHTS = {
+    "tradicional": 30, "moderno": 15, "on_premise": 15, "off_premise": 8,
+    "mayorista": 8, "ecommerce": 6, "institucional_horeca": 10, "vending": 8,
+}
+
+_VENDEDORES = ["Martina Ruiz", "Lucas Fernandez", "Sofia Alvarez", "Nicolas Diaz", "Camila Torres"]
+
+
+def _gen_empresas_clientes(n=36):
+    empresas = []
+    canales_pool = list(_CANAL_WEIGHTS.keys())
+    pesos = list(_CANAL_WEIGHTS.values())
     used_names = set()
-    for _ in range(n):
+    for i in range(1, n + 1):
+        canal = random.choices(canales_pool, weights=pesos)[0]
+        template = random.choice(_CANAL_TEMPLATES[canal])
         while True:
-            nombre = f"{random.choice(_NOMBRES)} {random.choice(_APELLIDOS1)} {random.choice(_APELLIDOS2)}"
+            nombre = template.format(n=random.choice(_NOMBRES_NEGOCIO))
             if nombre not in used_names:
                 used_names.add(nombre)
                 break
-        email_base = nombre.lower().replace(" ", ".").replace("a", "a").replace("e", "e")
-        email = f"{email_base}@email.com"
-        telefono = f"+34 6{random.randint(10, 99)} {random.randint(100, 999)} {random.randint(100, 999)}"
-        nivel = random.choices(_NIVELES, weights=[50, 35, 15])[0]
-        fecha_reg = date(2020, 1, 1) + timedelta(days=random.randint(0, (date(2025, 12, 31) - date(2020, 1, 1)).days))
-        ciudad = random.choice(_CIUDADES)
-        total_compras = round(random.uniform(50, 5000), 2)
-        num_pedidos = random.randint(1, 30)
-        clientes.append((nombre, email, telefono, nivel, fecha_reg.isoformat(), ciudad, total_compras, num_pedidos))
-    return clientes
+        razon_social = f"{nombre.split(' ')[-1]} S.R.L." if canal not in ("mayorista", "ecommerce") else nombre
+
+        # Distribucion directa mas probable en canales de mayor volumen (moderno, mayorista, institucional)
+        if canal in ("moderno", "mayorista", "institucional_horeca"):
+            tipo_dist = random.choices(TIPOS_DISTRIBUCION, weights=[70, 30])[0]
+        else:
+            tipo_dist = random.choices(TIPOS_DISTRIBUCION, weights=[20, 80])[0]
+
+        if canal in ("moderno", "mayorista"):
+            tamano = random.choices(TAMANOS_CANAL, weights=[10, 30, 60])[0]
+        elif canal in ("institucional_horeca",):
+            tamano = random.choices(TAMANOS_CANAL, weights=[15, 45, 40])[0]
+        else:
+            tamano = random.choices(TAMANOS_CANAL, weights=[55, 35, 10])[0]
+
+        condicion_habitual = random.choices(CONDICIONES_PAGO, weights=[65, 35])[0] if canal not in ("moderno", "mayorista", "institucional_horeca") \
+            else random.choices(CONDICIONES_PAGO, weights=[25, 75])[0]
+
+        ciudad, zona = random.choice(_ZONAS)
+        fecha_alta = date(2019, 1, 1) + timedelta(days=random.randint(0, (date(2025, 12, 31) - date(2019, 1, 1)).days))
+        vendedor = random.choice(_VENDEDORES)
+        codigo = f"CLI-{i:04d}"
+
+        empresas.append((
+            codigo, nombre, razon_social, canal, tipo_dist, tamano,
+            ciudad, zona, condicion_habitual, vendedor, fecha_alta.isoformat(), 1, None,
+        ))
+    return empresas
 
 
-def _gen_pedidos(num_clientes, num_productos, n=100):
+EMPRESAS_CLIENTES_MOCK = _gen_empresas_clientes(36)
+
+
+# ── Motor de politicas de descuento (curado a mano) ─────────────────────────
+
+POLITICAS_DESCUENTO_MOCK = [
+    # canal, tamano_canal, condicion_pago, vol_min_L, vol_max_L, descuento_pct, condiciones_adicionales, prioridad
+    ("tradicional", None,      "contado",  0,     50,     3.0,  None,                                             10),
+    ("tradicional", None,      "contado",  50,    150,    5.0,  None,                                             10),
+    ("tradicional", None,      "credito",  0,     150,    2.0,  "Sujeto a linea de credito aprobada",            10),
+    ("moderno",     None,      "contado",  0,     500,    6.0,  None,                                             10),
+    ("moderno",     None,      "contado",  500,   2000,   10.0, "Requiere exhibicion acordada",                   10),
+    ("moderno",     "grande",  "credito",  0,     2000,   7.0,  "Contrato comercial anual",                       20),
+    ("on_premise",  None,      "contado",  0,     300,    8.0,  "Aplica a formatos retornables",                  10),
+    ("on_premise",  None,      "credito",  0,     300,    5.0,  None,                                             10),
+    ("off_premise", None,      "contado",  0,     100,    4.0,  None,                                             10),
+    ("mayorista",   None,      "contado",  1000,  None,   15.0, "Volumen minimo de reventa",                       10),
+    ("mayorista",   None,      "credito",  1000,  None,   12.0, "Sujeto a linea de credito aprobada",             10),
+    ("ecommerce",   None,      "contado",  0,     None,   3.0,  "Precio online estandar",                         10),
+    ("institucional_horeca", None, "contado", 0,   2000,   10.0, None,                                            10),
+    ("institucional_horeca", None, "credito", 2000, None,  14.0, "Requiere contrato anual",                        20),
+    ("vending",     None,      "contado",  0,     None,   5.0,  None,                                             10),
+    ("todos",       None,      "contado",  0,     None,   0.0,  "Piso por defecto — sin politica especifica",     -1),
+    ("todos",       None,      "credito",  0,     None,   0.0,  "Piso por defecto — sin politica especifica",     -1),
+]
+
+
+def _match_politica(canal, tamano, condicion_pago, volumen_litros, politicas=POLITICAS_DESCUENTO_MOCK):
+    """Replica en Python la misma logica de seleccion determinista que usara la tool
+    consultar_politica_descuento en chatbot.py: filtra por canal/condicion_pago/volumen,
+    ordena por especificidad (tamano_canal exacto > canal exacto > prioridad) y toma la primera."""
+    candidatas = []
+    for c, tam, cond, vmin, vmax, pct, cond_ad, prio in politicas:
+        if cond != condicion_pago:
+            continue
+        if c != canal and c != "todos":
+            continue
+        if tam is not None and tam != tamano:
+            continue
+        vmax_eff = vmax if vmax is not None else float("inf")
+        if not (vmin <= volumen_litros <= vmax_eff):
+            continue
+        especificidad = (tam is not None, c != "todos", prio)
+        candidatas.append((especificidad, pct))
+    if not candidatas:
+        return 0.0
+    candidatas.sort(key=lambda x: x[0], reverse=True)
+    return candidatas[0][1]
+
+
+# ── Datos mock: pedidos + detalle ───────────────────────────────────────────
+
+def _gen_pedidos(empresas, productos, n=80):
     pedidos = []
     detalles = []
     for i in range(1, n + 1):
         numero = f"PED-{i:04d}"
-        cliente_id = random.randint(1, num_clientes)
-        fecha = date(2024, 6, 1) + timedelta(days=random.randint(0, 300))
-        # Distribucion realista de estados
-        estado = random.choices(
-            _ESTADOS_PEDIDO,
-            weights=[10, 10, 15, 45, 10, 10]
-        )[0]
-        metodo_pago = random.choice(_METODOS_PAGO)
-        ciudad = random.choice(_CIUDADES)
-        direccion = f"Calle {random.choice(['Mayor', 'Gran Via', 'Alcala', 'Serrano', 'Diagonal', 'Ramblas', 'Paseo de Gracia'])} {random.randint(1, 150)}, {ciudad}"
+        empresa = random.choice(empresas)
+        (codigo_cli, nombre_cli, razon_social, canal, tipo_dist, tamano,
+         ciudad, zona, cond_habitual, vendedor, fecha_alta, activo, notas_e) = empresa
+        empresa_idx = empresas.index(empresa) + 1  # id autoincremental = orden de insercion
 
-        # Generar items del pedido (1-4 productos)
-        num_items = random.randint(1, 4)
-        productos_pedido = random.sample(range(1, num_productos + 1), min(num_items, num_productos))
-        total = 0.0
+        fecha = date(2025, 1, 1) + timedelta(days=random.randint(0, 190))
+        estado = random.choices(_ESTADOS_PEDIDO, weights=[20, 15, 20, 15, 20, 5, 5])[0]
+        condicion_pago = random.choices(CONDICIONES_PAGO, weights=[60, 40])[0] if cond_habitual == "contado" else cond_habitual
+
+        num_items = random.randint(1, 5)
+        productos_pedido = random.sample(range(1, len(productos) + 1), min(num_items, len(productos)))
+
+        volumen_total_litros = 0.0
+        lineas = []
         for prod_id in productos_pedido:
-            cantidad = random.randint(1, 3)
-            # El precio se fijara al insertar, aqui usamos indice
-            precio_idx = prod_id - 1
-            precio = PRODUCTOS_MOCK[precio_idx][2] if precio_idx < len(PRODUCTOS_MOCK) else 29.99
-            subtotal = precio * cantidad
-            total += subtotal
-            detalles.append((numero, prod_id, cantidad, precio))
-        total = round(total, 2)
+            prod = productos[prod_id - 1]
+            litros_unit = float(prod[5])
+            cantidad = random.randint(1, 40 if canal in ("mayorista", "moderno") else 12)
+            volumen_total_litros += litros_unit * cantidad
+            lineas.append((prod_id, cantidad, float(prod[6])))
 
-        tracking = f"ES{random.randint(100000000, 999999999)}TR" if estado in ("enviado", "entregado") else None
-        fecha_envio = (fecha + timedelta(days=random.randint(1, 3))) if estado in ("enviado", "entregado") else None
-        fecha_entrega_est = (fecha_envio + timedelta(days=random.randint(2, 5))) if fecha_envio else None
-        fecha_entrega_real = (fecha_entrega_est + timedelta(days=random.randint(-1, 2))) if estado == "entregado" and fecha_entrega_est else None
+        descuento_pct = _match_politica(canal, tamano, condicion_pago, round(volumen_total_litros, 3))
+
+        subtotal = 0.0
+        for prod_id, cantidad, precio_unit in lineas:
+            precio_neto = round(precio_unit * (1 - descuento_pct / 100), 2)
+            subtotal_linea = round(precio_neto * cantidad, 2)
+            subtotal += subtotal_linea
+            detalles.append((numero, prod_id, cantidad, precio_unit, descuento_pct, precio_neto, subtotal_linea))
+        subtotal = round(subtotal, 2)
+        total = subtotal  # sin impuestos adicionales en el mock
 
         notas = None
-        if estado == "cancelado":
+        if estado == "rechazado":
             notas = random.choice([
-                "Cliente solicito cancelacion antes del envio",
-                "Cancelado por falta de stock",
-                "Cliente cambio de opinion",
+                "Rechazado por backoffice: excede linea de credito disponible.",
+                "Rechazado por backoffice: producto sin stock en deposito.",
             ])
-        elif estado == "devuelto":
-            notas = random.choice([
-                "Talla incorrecta, solicita cambio",
-                "Producto no coincide con la foto",
-                "Llego danado",
-                "No le gusto el color",
-            ])
+        elif estado == "cancelado":
+            notas = "Cancelado a pedido del vendedor antes de aprobacion."
 
         pedidos.append((
-            numero, cliente_id, fecha.isoformat(), estado, total, metodo_pago,
-            direccion, tracking,
-            fecha_envio.isoformat() if fecha_envio else None,
-            fecha_entrega_est.isoformat() if fecha_entrega_est else None,
-            fecha_entrega_real.isoformat() if fecha_entrega_real else None,
-            notas,
+            numero, empresa_idx, fecha.isoformat(), estado, canal, condicion_pago,
+            vendedor, descuento_pct, subtotal, total, notas,
+            datetime.combine(fecha, datetime.min.time()).strftime("%Y-%m-%d %H:%M:%S"),
         ))
     return pedidos, detalles
 
 
-CLIENTES_MOCK = _gen_clientes(50)
-PEDIDOS_MOCK, DETALLES_MOCK = _gen_pedidos(50, len(PRODUCTOS_MOCK), 100)
+PEDIDOS_MOCK, DETALLES_MOCK = _gen_pedidos(EMPRESAS_CLIENTES_MOCK, PRODUCTOS_MOCK, 80)
 
 
-def _gen_reclamos(pedidos):
-    """Genera reclamos mock: uno por cada pedido devuelto + algunos para pedidos enviados/entregados."""
-    reclamos = []
+# ── Datos mock: gestiones de posventa ───────────────────────────────────────
+
+_TIPOS_GESTION = ["producto_defectuoso", "faltante_entrega", "error_facturacion", "reclamo_precio", "logistica_retraso", "solicitud_credito", "otro"]
+
+
+def _gen_gestiones_posventa(pedidos):
+    gestiones = []
     contador = 1
     for ped in pedidos:
-        numero_pedido, cliente_id, fecha_str, estado = ped[0], ped[1], ped[2], ped[3]
+        numero_pedido, empresa_idx, fecha_str, estado = ped[0], ped[1], ped[2], ped[3]
         fecha_base = date.fromisoformat(fecha_str)
 
-        if estado == "devuelto":
-            tipo = random.choice(["defecto", "otro"])
-            desc = random.choice([
-                "Producto llego con un defecto de fabrica visible.",
-                "El producto no coincide con la descripcion de la web.",
-                "La talla no corresponde al talle indicado.",
-            ])
-            resultado = random.choice(["resuelto", "cerrado"])
-            fecha_apertura = fecha_base + timedelta(days=random.randint(5, 15))
-            fecha_cierre = fecha_apertura + timedelta(days=random.randint(2, 10))
-            resolucion = "Devolucion aceptada y reembolso procesado."
-            reclamos.append((
-                f"REC-{contador:04d}", numero_pedido, cliente_id, tipo, desc,
-                resultado, "media", "chat",
-                fecha_apertura.isoformat() + " 10:00:00",
-                fecha_cierre.isoformat() + " 12:00:00",
-                resolucion,
+        if estado == "rechazado" and random.random() < 0.5:
+            tipo = "solicitud_credito"
+            desc = "El vendedor solicita revision de la linea de credito para destrabar el pedido."
+            fecha_apertura = fecha_base + timedelta(days=random.randint(1, 5))
+            gestiones.append((
+                f"GES-{contador:04d}", numero_pedido, empresa_idx, tipo, desc,
+                "en_gestion", "media", "chat", random.choice(_VENDEDORES),
+                fecha_apertura.isoformat() + " 09:30:00", None, None,
             ))
             contador += 1
-        elif estado == "entregado" and random.random() < 0.08:
-            tipo = random.choice(["atencion", "retraso", "cobro_indebido"])
+        elif estado in ("aprobado", "facturado", "entregado") and random.random() < 0.12:
+            tipo = random.choice(["producto_defectuoso", "faltante_entrega", "error_facturacion", "logistica_retraso"])
             desc = random.choice([
-                "El cliente reporta cargo duplicado en su tarjeta.",
-                "Entrega retrasada respecto a la fecha comprometida.",
-                "Queja sobre la atencion recibida en un contacto previo.",
+                "El cliente reporta un faltante de bultos respecto a lo facturado.",
+                "El cliente reporta botellas con perdida de gas / defecto de fabrica.",
+                "El cliente indica un error en el monto facturado respecto al acordado.",
+                "El cliente reporta una demora significativa en la entrega pactada.",
             ])
-            fecha_apertura = fecha_base + timedelta(days=random.randint(1, 20))
-            reclamos.append((
-                f"REC-{contador:04d}", numero_pedido, cliente_id, tipo, desc,
-                "en_gestion", "alta", "chat",
-                fecha_apertura.isoformat() + " 15:30:00",
-                None, None,
+            fecha_apertura = fecha_base + timedelta(days=random.randint(2, 20))
+            resultado = random.choice(["resuelto", "cerrado", "en_gestion"])
+            fecha_cierre = fecha_apertura + timedelta(days=random.randint(1, 8)) if resultado in ("resuelto", "cerrado") else None
+            gestiones.append((
+                f"GES-{contador:04d}", numero_pedido, empresa_idx, tipo, desc,
+                resultado, random.choice(["media", "alta"]), "chat", random.choice(_VENDEDORES),
+                fecha_apertura.isoformat() + " 11:00:00",
+                fecha_cierre.isoformat() + " 15:00:00" if fecha_cierre else None,
+                "Ajuste realizado y confirmado con el cliente." if fecha_cierre else None,
             ))
             contador += 1
-    return reclamos
+    return gestiones
 
 
-RECLAMOS_MOCK = _gen_reclamos(PEDIDOS_MOCK)
+GESTIONES_POSVENTA_MOCK = _gen_gestiones_posventa(PEDIDOS_MOCK)
 
 
-# ── Ontologia de Procedimientos ──────────────────────────────────────────────
+# ── Ontologia de Procedimientos (canales) ───────────────────────────────────
 
 ONTOLOGIA_PROCEDIMIENTOS = """
-# Ontologia de Procedimientos de Atencion al Cliente — v1.0
+# Ontologia de Procedimientos por Canal — Coca-Cola Field Sales — v1.0
 
-Eres un experto en atencion al cliente para retail de moda y lifestyle.
-A continuacion se definen los procedimientos por tipo de consulta.
-
----
-
-## COMO GESTIONAR CADA TIPO DE CONSULTA
-
-### Segun el nivel de fidelidad del cliente
-- **VIP:** maxima prioridad. Ofrece soluciones inmediatas, envio express gratuito en reenvios, y gestion personalizada. Este cliente merece un trato excepcional.
-- **Premium:** prioriza soluciones rapidas. Ofrece opciones flexibles y muestra interes genuino por su satisfaccion.
-- **Basico:** atencion cordial y eficiente. Sigue los procedimientos estandar pero siempre con empatia.
-
-### Como avanzar en la conversacion
-- Presenta **una solucion por turno**. Espera la reaccion del cliente antes de continuar.
-- Si el cliente acepta: confirma los detalles y ejecuta la accion.
-- Si el cliente no esta satisfecho: ofrece la **siguiente alternativa** disponible.
-- Nunca repitas una solucion que el cliente ya rechazo.
+Eres un experto en politica comercial y procedimientos de venta de Coca-Cola para
+fuerza de venta en terreno. A continuacion se describen las categorias de canal
+que existen en la operacion y como negociar/proceder en cada una.
 
 ---
 
-## CONSULTA: Estado del pedido
+## 1. Canal Tradicional (Traditional Trade / TT)
 
-**Procedimiento:**
-1. Pedir el numero de pedido o datos del cliente para localizarlo.
-2. Buscar el pedido con la tool `buscar_pedido`.
-3. Informar el estado actual de forma clara:
-   - **Pendiente:** "Tu pedido esta confirmado y estamos preparandolo."
-   - **Procesando:** "Tu pedido esta siendo preparado en nuestro almacen."
-   - **Enviado:** "Tu pedido ya esta en camino. Tracking: [numero]. Entrega estimada: [fecha]."
-   - **Entregado:** "Segun nuestro sistema, tu pedido fue entregado el [fecha]."
-4. Si el cliente dice que no lo recibio y el estado es 'entregado', abrir incidencia.
+Almacenes, kioscos, autoservicios de barrio, despensas — el comercio de cercania.
+Es historicamente el canal de mayor volumen en Argentina y LatAm.
 
----
+- Pedidos de volumen chico y frecuencia alta (visitas semanales o quincenales).
+- La negociacion gira en torno a exhibicion (heladeras, gondolas) y descuentos por
+  volumen acumulado, no por contrato formal.
+- Condicion de pago habitual: contado. El credito es mas restringido y requiere
+  buen track record.
+- Prioridad del vendedor: asegurar presencia de portfolio completo (gaseosas, aguas,
+  saborizadas) y buena visibilidad de heladera.
 
-## CONSULTA: Devolucion / Cambio de producto
+## 2. Canal Moderno (Modern Trade / MT)
 
-**Procedimiento:**
-1. Verificar que el pedido esta dentro del plazo de devolucion (30 dias desde la entrega).
-2. Preguntar el motivo de la devolucion (talla, color, defecto, no gusta).
-3. Ofrecer opciones segun el motivo:
-   - **Talla incorrecta:** cambio por la talla correcta sin coste. Verificar stock.
-   - **Defecto / danado:** disculparse, ofrecer reenvio inmediato o reembolso completo.
-   - **No gusta / cambio de opinion:** devolucion con envio de devolucion gratuito para Premium/VIP; Basico paga envio de devolucion (5.99 EUR).
-4. Explicar el proceso: generar etiqueta de devolucion, reembolso en 5-7 dias habiles tras recibir el producto.
+Supermercados e hipermercados, cadenas de autoservicio y mayoristas organizados
+(cash & carry).
 
-**Si el plazo ha expirado:**
-- Informar con empatia que el plazo de 30 dias ha pasado.
-- Para clientes VIP: ofrecer excepcion como gesto comercial (hasta 45 dias).
-- Para otros: sugerir contactar con la tienda fisica mas cercana.
+- Volumen alto por pedido, negociacion con central de compras o encargado de local.
+- Suele incluir acuerdos de exhibicion/gondola y condiciones de pago a credito.
+- Requiere coordinacion logistica con anticipacion (turnos de entrega, documentacion).
+- La politica de descuento aqui es mas agresiva en volumen alto — usar siempre la
+  tool de consulta de politica antes de comprometer un numero.
 
----
+## 3. On Premise (consumo en el lugar)
 
-## CONSULTA: Problema con el envio / Retraso
+Bares, restaurantes, hoteles, boliches, cines — venta de "botella abierta" para
+consumo inmediato en el punto de venta.
 
-**Procedimiento:**
-1. Buscar el pedido y verificar el estado de tracking.
-2. Si esta en plazo normal (2-5 dias habiles): tranquilizar al cliente.
-3. Si hay retraso (>5 dias habiles desde envio):
-   - Disculparse por el retraso.
-   - Contactar con la empresa de transporte (simular gestion).
-   - Ofrecer seguimiento prioritario.
-   - Si el retraso es >10 dias: ofrecer reenvio o reembolso.
-4. Para clientes VIP/Premium con retraso: ofrecer un descuento del 10% en proxima compra como compensacion.
+- Rotacion rapida, foco en formatos individuales y retornables (vidrio).
+- La relacion comercial suele incluir comodato de heladeras/equipos de frio.
+- Negociar reposicion frecuente y prioridad de espacio en barra/heladera.
 
----
+## 4. Off Premise
 
-## CONSULTA: Cancelacion de pedido
+Todo lo que se compra para consumir en otro lugar (casa, oficina). Es una categoria
+ANALITICA que se solapa con Tradicional y Moderno — no reemplaza esos canales.
+Cuando una cuenta se clasifica puntualmente como "off_premise" (ej. un autoservicio
+de bebidas para llevar que no encaja claramente en TT ni MT), la politica de
+descuento se define por su propio canal, no por esta etiqueta.
 
-**Procedimiento:**
-1. Verificar el estado del pedido.
-2. Si esta **pendiente o procesando:** cancelacion inmediata, reembolso en 3-5 dias.
-3. Si esta **enviado:** informar que ya no se puede cancelar, pero puede rechazar la entrega o hacer devolucion gratuita.
-4. Preguntar siempre el motivo de la cancelacion para feedback.
+## 5. Mayoristas / Distribuidores terceros (Wholesale)
 
----
+Distribuidores que compran en volumen y revenden a comercios mas chicos, en zonas
+de menor densidad o donde no se llega en forma directa.
 
-## CONSULTA: Informacion de producto / Disponibilidad
+- Pedidos de volumen muy alto, precios mayoristas (mayor descuento por volumen).
+- La relacion es de reventa: el mayorista es cliente, no consumidor final.
+- Frecuencia de visita baja (mensual o segun ciclo de reposicion propio).
 
-**Procedimiento:**
-1. Buscar el producto con la tool `buscar_producto`.
-2. Informar: nombre, precio, disponibilidad de stock, descripcion.
-3. Si no hay stock: ofrecer avisar cuando se reponga, o sugerir productos similares de la misma categoria.
-4. Si el cliente pregunta por tallas: informar las disponibles.
+## 6. E-commerce / Canal digital
 
----
+Marketplaces propios, quick-commerce (apps de delivery) y sitios de e-commerce de
+cadenas retail.
 
-## CONSULTA: Facturacion / Pago
+- No hay visita fisica; la relacion es administrativa/logistica (SLA de entrega,
+  disponibilidad de catalogo online).
+- Precio estandar de canal digital, descuentos acotados salvo campana puntual.
 
-**Procedimiento:**
-1. Para solicitud de factura: pedir datos fiscales y numero de pedido, confirmar que se enviara por email en 24h.
-2. Para cargo duplicado: verificar el pedido, abrir incidencia con el equipo de pagos, confirmar resolucion en 48h.
-3. Para cambio de metodo de pago: solo posible si el pedido esta en estado 'pendiente'.
+## 7. Institucional / Horeca
 
----
+Hoteles, restaurantes, catering, comedores corporativos, eventos — venta B2B a
+gran escala, con contratos y logistica diferenciada.
 
-## CONSULTA: Queja / Reclamacion
+- Requiere contrato comercial (volumen anual comprometido) para acceder a mejores
+  condiciones.
+- Negociacion mas formal: involucra compras corporativas, no solo al encargado local.
+- Coordinar entregas programadas y facturacion consolidada.
 
-**Procedimiento:**
-1. Escuchar activamente sin interrumpir.
-2. Disculparse de forma genuina y especifica.
-3. Identificar el problema raiz y ofrecer solucion concreta.
-4. Si el cliente insiste: ofrecer escalar a supervisor.
-5. Registrar la queja en el sistema para seguimiento.
+## 8. Vending
 
----
+Maquinas expendedoras en oficinas, universidades, estaciones de servicio, edificios
+corporativos.
 
-## ACCIONES EJECUTIVAS — Tools de escritura
+- Reposicion programada, formatos individuales (lata, botella chica).
+- Ubicacion fija: la negociacion es con el administrador del edificio/predio,
+  no con un punto de venta tradicional.
 
-Ademas de informar, dispones de tools que **modifican el pedido en el sistema**.
-Nunca prometas una accion sin ejecutarla: cuando el cliente acepta, invoca la tool correspondiente.
+## 9. Directo vs. Indirecto (atributo transversal — NO es un canal mas)
 
-### Cuando invocar cada tool
+- **Directo:** fabrica/embotelladora → distribucion propia → punto de venta
+  (camiones y depositos propios).
+- **Indirecto:** fabrica → mayorista/distribuidor tercero → minorista → consumidor.
 
-1. **`cancelar_pedido(numero_pedido, motivo)`** — Cuando el cliente confirma explicitamente que quiere cancelar.
-   - Antes: confirma con el cliente ("Confirmas que quieres cancelar el pedido X?").
-   - Requiere motivo. Si no lo da, preguntalo brevemente.
-   - Solo funciona si el estado es 'pendiente' o 'procesando'. La tool rechazara el resto.
-
-2. **`actualizar_direccion_envio(numero_pedido, nueva_direccion)`** — Cuando el cliente quiere corregir o cambiar la direccion.
-   - Pide la direccion completa (calle, numero, piso, ciudad, codigo postal) en un solo mensaje.
-   - Solo funciona si el pedido aun no ha salido (sin fecha_envio).
-
-3. **`cambiar_metodo_pago(numero_pedido, nuevo_metodo)`** — Cuando el cliente quiere cambiar la forma de pago.
-   - Metodos aceptados: tarjeta, paypal, bizum, transferencia, contra_reembolso.
-   - Solo funciona si el estado es 'pendiente'.
-
-4. **`iniciar_devolucion(numero_pedido, motivo)`** — Cuando el cliente confirma que quiere devolver un pedido ya entregado.
-   - Antes de invocarla, sigue el procedimiento de **CONSULTA: Devolucion / Cambio de producto**:
-     pregunta el motivo y ofrece la alternativa adecuada. Solo llama a la tool cuando el cliente **acepta** la devolucion.
-   - Solo funciona si el estado es 'entregado' y dentro del plazo (30 dias, 45 VIP).
-
-5. **`marcar_incidencia_entrega(numero_pedido, descripcion)`** — Cuando el cliente dice "no lo recibi" y el pedido figura como entregado.
-   - Registra la incidencia sin cambiar el estado. Logistica investigara.
-   - Explica al cliente que recibira respuesta en 48h con numero de caso.
-
-6. **`agregar_nota_pedido(numero_pedido, nota)`** — Cuando hay que dejar trazado algo que no encaja en otras tools:
-   - Acuerdo de descuento de compensacion, peticion especial, feedback de queja, preferencia del cliente.
-   - Usar DESPUES de una queja para registrarla formalmente.
-
-7. **`abrir_reclamo(numero_pedido, tipo, descripcion)`** — Cuando el problema requiere trazabilidad formal e intervencion del equipo:
-   - **defecto:** producto danado o con tara de fabrica.
-   - **no_recibido:** cliente insiste en que no recibio un pedido entregado (escalar DESPUES de `marcar_incidencia_entrega` si el cliente lo requiere).
-   - **cobro_indebido:** cargo duplicado o no reconocido — requiere intervencion del equipo de pagos.
-   - **retraso:** retraso grave que ya no se puede resolver solo con seguimiento.
-   - **atencion:** queja formal sobre atencion previa, supervisor, etc.
-   - **otro:** cualquier caso que no encaje en los anteriores.
-   Genera un REC-XXXX y debe comunicarse **siempre** al cliente como referencia.
-   La prioridad y el SLA se asignan automaticamente segun el nivel del cliente.
-
-8. **`consultar_reclamos(numero)`** — Lectura:
-   - Si el cliente da un REC-XXXX, consulta el estado del reclamo.
-   - Si quieres saber si un pedido ya tiene reclamos antes de abrir otro, pasa el PED-XXXX.
-   - Util al inicio de una queja para no duplicar reclamos existentes.
-
-### Cuando abrir un reclamo vs solo anotar
-
-- **Reclamo formal** (`abrir_reclamo`): hay un compromiso de respuesta con SLA, requiere equipo externo (logistica, pagos, supervisor), o el cliente pide escalar.
-- **Solo nota** (`agregar_nota_pedido`): el caso se resolvio en el chat pero conviene dejar traza.
-- **Solo incidencia** (`marcar_incidencia_entrega`): primer registro de "no lo recibi"; el reclamo se abre despues si el cliente lo requiere o logistica no resuelve.
-
-### Reglas de uso
-
-- **Nunca inventes el resultado de una tool.** Si una tool devuelve un mensaje de error o limitacion,
-  comunicaselo al cliente tal cual, adaptando el tono.
-- **Confirma siempre antes de ejecutar** una accion destructiva (cancelar, devolver, cambiar direccion o pago).
-- **Una sola tool por turno** cuando sea posible, para que el cliente siga el hilo.
-- Tras ejecutar una accion exitosa, resume al cliente **que hiciste** y **que sigue**
-  (plazos de reembolso, proximos pasos, numero de caso).
+Este atributo aplica a CUALQUIERA de los 8 canales de arriba y define quien entrega
+fisicamente el pedido y quien factura. Consultalo en la ficha de la cuenta
+(`consultar_cuenta_cliente`) antes de prometer plazos de entrega.
 
 ---
 
-## NOTAS GENERALES PARA EL AGENTE
+## REGLAS DE ESCALAMIENTO
 
-- Siempre personalizar con el nombre del cliente y datos de su pedido.
-- Un cliente VIP merece un esfuerzo extra — usar su historial para personalizar.
-- No prometer plazos que no se puedan cumplir.
-- Si no se puede resolver en el momento, dar un plazo concreto de respuesta.
-- Cerrar siempre con una pregunta: "Hay algo mas en lo que pueda ayudarte?"
+- Si el cliente pide una condicion fuera de politica (descuento mayor al que
+  devuelve `consultar_politica_descuento`, plazo de pago no habitual, etc.):
+  **nunca prometas la excepcion vos mismo** — indicale al vendedor que debe
+  escalarlo a su supervisor comercial.
+- Si hay un problema con un pedido ya tomado (faltante, defecto, facturacion,
+  demora), no lo resuelvas como si fuera una venta nueva: usa
+  `abrir_gestion_posventa` para dejarlo trazado formalmente.
+- Antes de tomar un pedido nuevo (`crear_pedido`), confirma con el vendedor que
+  el cliente acepto el descuento informado — nunca lo asumas.
+"""
+
+# ── Ontologia de Politicas de Descuento ──────────────────────────────────────
+
+ONTOLOGIA_DESCUENTOS = """
+# Ontologia de Politicas de Descuento — Coca-Cola Field Sales — v1.0
+
+Esta ontologia explica la LOGICA de las politicas de descuento. El **numero exacto
+de descuento SIEMPRE se obtiene de la tool `consultar_politica_descuento`** —
+tenes PROHIBIDO calcular, estimar o inventar un porcentaje de descuento vos mismo.
+
+## Como se determina un descuento
+
+El descuento aplicable depende de la combinacion de:
+1. **Canal** de la cuenta (tradicional, moderno, on_premise, off_premise,
+   mayorista, ecommerce, institucional_horeca, vending).
+2. **Volumen** del pedido, medido en litros totales.
+3. **Condicion de pago** (contado o credito) — el credito suele tener menor
+   descuento que el contado, salvo en cuentas grandes con contrato anual.
+4. **Tamano del canal** (pequeno/mediano/grande) — algunas politicas aplican solo
+   a cuentas grandes (ej. contratos anuales en Moderno o Institucional/Horeca).
+
+## Logica ilustrativa (referencia para el vendedor, NO para calcular vos mismo)
+
+- Canal Tradicional: descuentos moderados (2%-5%), mayores en contado que en credito.
+- Canal Moderno: descuentos crecen fuerte con el volumen, especialmente en cuentas
+  grandes con contrato anual.
+- On Premise: descuento algo mayor en contado, orientado a formatos retornables.
+- Mayoristas: los descuentos mas altos de todo el esquema, por revender en volumen.
+- E-commerce: descuento acotado y estable, es el precio de canal digital.
+- Institucional/Horeca: descuento mayor cuando hay contrato anual de volumen
+  comprometido (condicion de pago credito).
+- Vending: descuento fijo, no varia mucho por volumen.
+
+## Que hacer si no hay politica aplicable
+
+Si `consultar_politica_descuento` no encuentra una politica especifica, devuelve
+0% con un mensaje explicito de "sin politica aplicable, escalar a supervisor
+comercial". En ese caso: **nunca ofrezcas un descuento por tu cuenta** — informa
+al vendedor que debe escalarlo.
+
+## Al tomar un pedido (`crear_pedido`)
+
+1. Reuni primero el volumen total estimado (suma de litros de todas las lineas).
+2. Consulta la politica aplicable con `consultar_politica_descuento` usando el
+   canal y condicion de pago de la cuenta.
+3. Confirma el descuento con el vendedor ANTES de registrar el pedido.
+4. Registra el pedido — siempre queda en estado `solicitado`, pendiente de
+   revision de backoffice antes de aprobarse.
 """
 
 # ── Ontologia FAQ ───────────────────────────────────────────────────────────
 
 ONTOLOGIA_FAQ = """
-# Ontologia FAQ — Preguntas Frecuentes v1.0
+# Ontologia FAQ — Fuerza de Venta Coca-Cola — v1.0
 
-Respuestas estandar para las preguntas mas habituales de los clientes.
-El agente debe adaptar el tono y personalizar con los datos del cliente.
-
----
-
-## ENVIOS
-
-**Cuanto tarda el envio?**
-- Envio estandar: 3-5 dias habiles.
-- Envio express (Premium/VIP gratuito, Basico +4.99 EUR): 24-48h.
-- Envio a Baleares/Canarias: 5-7 dias habiles.
-
-**Cuanto cuesta el envio?**
-- Gratuito para pedidos superiores a 50 EUR.
-- Pedidos menores: 3.99 EUR envio estandar.
-- Clientes VIP: envio gratuito siempre.
-
-**Hacen envios internacionales?**
-- Actualmente enviamos a Espana peninsular, Baleares y Canarias.
-- Envios a Portugal disponibles (5-7 dias, 6.99 EUR).
-- Resto de Europa: no disponible actualmente.
+Preguntas frecuentes de un vendedor en terreno. Adapta el tono, pero no inventes
+respuestas que no esten aqui.
 
 ---
 
-## DEVOLUCIONES
+## OBJECIONES DE PRECIO / DESCUENTO
 
-**Cual es el plazo de devolucion?**
-- 30 dias naturales desde la recepcion del pedido.
-- El producto debe estar sin usar, con etiquetas y en su embalaje original.
-- Productos de bano/intimo no admiten devolucion por higiene.
+**El cliente pide mas descuento del que ofrece la politica, ¿que hago?**
+- Nunca prometas el descuento extra vos mismo. Informa al vendedor que debe
+  escalar la excepcion a su supervisor comercial, indicando canal, volumen y
+  el descuento que la politica SI permite hoy.
 
-**Como hago una devolucion?**
-1. Contactar con atencion al cliente (aqui mismo o por email).
-2. Recibes una etiqueta de devolucion por email.
-3. Dejar el paquete en un punto de recogida Correos/SEUR.
-4. Reembolso en 5-7 dias habiles tras recibir el producto.
-
-**Me devuelven el dinero del envio?**
-- Si la devolucion es por defecto nuestro: reembolso completo incluyendo envio.
-- Si es por cambio de opinion: solo se reembolsa el producto, no el envio original.
+**¿Puedo combinar descuento por volumen con descuento por canal?**
+- No, la tool `consultar_politica_descuento` ya devuelve el descuento final
+  correcto para la combinacion canal + volumen + condicion de pago — es una
+  unica cifra determinista, no se suman politicas.
 
 ---
 
-## PAGOS
+## CONDICIONES DE PAGO
 
-**Que metodos de pago aceptan?**
-- Tarjeta de credito/debito (Visa, Mastercard, Amex).
-- PayPal.
-- Bizum.
-- Transferencia bancaria (solo pedidos >100 EUR).
+**¿Cuando conviene ofrecer credito en vez de contado?**
+- El credito suele tener menor descuento salvo en cuentas grandes con contrato
+  anual (Moderno, Institucional/Horeca). Si el cliente quiere credito y no tiene
+  linea aprobada, la aprobacion de credito la maneja backoffice, no el vendedor.
 
-**Es seguro comprar en la web?**
-- Si, usamos encriptacion SSL y cumplimos con la normativa PSD2.
-- Los datos de pago no se almacenan en nuestros servidores.
-- Certificado de confianza online.
-
-**Puedo pagar a plazos?**
-- Disponible para pedidos >75 EUR a traves de Klarna (3 plazos sin intereses).
+**El pedido quedo `rechazado` por backoffice, ¿que hago?**
+- Consulta el motivo en las notas del pedido. Si es por credito, abre una gestion
+  de posventa de tipo `solicitud_credito` para que backoffice revise la linea.
 
 ---
 
-## PROGRAMA DE FIDELIDAD
+## LOGISTICA DIRECTA VS INDIRECTA
 
-**Como funciona el programa de fidelidad?**
-- **Basico (0-499 EUR/ano):** acceso a newsletter y ofertas generales.
-- **Premium (500-1499 EUR/ano):** envio express gratuito, acceso anticipado a rebajas, descuento cumpleanos 15%.
-- **VIP (1500+ EUR/ano):** todo lo anterior + envio siempre gratuito, atencion prioritaria, invitaciones a eventos, descuento permanente 10%.
+**¿Como se cual es el tipo de distribucion de una cuenta?**
+- Esta en la ficha de la cuenta (`consultar_cuenta_cliente`), campo tipo de
+  distribucion: directo (entrega y factura la embotelladora) o indirecto
+  (entrega y factura un distribuidor/mayorista tercero).
 
-**Como subo de nivel?**
-- Automaticamente al alcanzar el umbral de gasto anual.
-- El nivel se recalcula cada 1 de enero.
-
----
-
-## TIENDAS FISICAS
-
-**Puedo recoger en tienda?**
-- Si, opcion "Click & Collect" disponible. Recogida en 2h si hay stock en tienda.
-- Envio a tienda gratuito si el producto no esta en la tienda local.
-
-**Puedo devolver en tienda un pedido online?**
-- Si, puedes devolver en cualquier tienda fisica con el numero de pedido.
-- Reembolso inmediato en el mismo metodo de pago.
+**¿Puedo cambiar el tipo de distribucion de una cuenta desde el chat?**
+- No, es un dato estructural de la cuenta que gestiona el area comercial, no
+  una tool disponible para el vendedor en el chat.
 
 ---
 
-## OTROS
+## CATALOGO Y SKUs
 
-**Tienen tallas grandes/especiales?**
-- Rango de tallas de XS a XXL en la mayoria de productos.
-- Coleccion Plus Size disponible en seleccion de productos.
+**El cliente pide un producto que no aparece en el catalogo, ¿que hago?**
+- Informa que no esta disponible en el catalogo actual y ofrece sugerir un
+  producto similar de la misma categoria. No inventes un SKU ni un precio.
 
-**Los productos son sostenibles?**
-- Linea "Conscious" fabricada con materiales reciclados y organicos.
-- Embalajes 100% reciclables.
-- Programa de recogida de ropa usada en tiendas.
+---
 
-**Como contacto con atencion al cliente?**
-- Chat en vivo (este canal): lunes a sabado 9h-21h.
-- Email: ayuda@urbanstyle.es — respuesta en 24h.
-- Telefono: 900 123 456 (gratuito) — lunes a viernes 9h-18h.
+## PEDIDOS Y APROBACION
+
+**¿Cuanto tarda en aprobarse un pedido `solicitado`?**
+- El pedido queda pendiente de revision de backoffice; no hay un plazo fijo
+  que el asistente pueda prometer — informa al vendedor que se hara seguimiento.
+
+**¿Puedo modificar un pedido ya `aprobado` o `facturado`?**
+- No mediante las tools de toma de pedido. Cualquier ajuste en ese estado se
+  gestiona como una gestion de posventa (`abrir_gestion_posventa`).
 """
 
 # ── System Prompt ────────────────────────────────────────────────────────────
 
-SYSTEM_PROMPT = """Eres un asistente experto en atencion al cliente para una tienda de moda y lifestyle.
+SYSTEM_PROMPT = """Eres el asistente de fuerza de venta en terreno de Coca-Cola. Hablas con el
+VENDEDOR (no con el cliente final): tu trabajo es ayudarlo a preparar el pitch
+de venta y la negociacion con cada cuenta, aplicando correctamente las politicas
+comerciales de la firma.
 
 ## Tu flujo de trabajo
 
-1. **Saluda** al cliente de forma amable y pregunta en que puedes ayudarle.
-2. **Identifica la consulta** del cliente: pedido, devolucion, producto, queja, etc.
-3. Si el cliente menciona un numero de pedido, **busca el pedido** con la tool `buscar_pedido`.
-4. Si el cliente pregunta por un producto, **busca el producto** con la tool `buscar_producto`.
-5. **Consulta los procedimientos** usando la tool `ontologia_procedimientos` para obtener los pasos a seguir segun el tipo de consulta.
-6. Si el cliente tiene una pregunta general, **consulta las FAQ** con la tool `ontologia_faq`.
-7. **Guia al cliente** paso a paso hasta resolver su consulta.
-8. Al finalizar, pregunta si necesita ayuda con algo mas.
+1. **Identifica la cuenta**: si el vendedor no dio aun el codigo de cliente
+   (formato CLI-XXXX), pideselo antes de avanzar. Si ya viene identificado
+   (por ejemplo porque el vendedor lo selecciono desde su cartera antes de
+   iniciar el chat), procede directo al paso 2.
+2. **Consulta el perfil de la cuenta** con `consultar_cuenta_cliente`: canal,
+   tipo de distribucion, tamano de canal, condicion de pago habitual.
+3. **Revisa el historico** con `consultar_historico_pedidos` para entender el
+   volumen y los precios de pedidos recientes — esto arma el argumento del pitch.
+4. **Consulta el catalogo** con `buscar_producto` cuando el vendedor pregunte
+   por SKUs, formatos o precios de lista.
+5. **Nunca prometas un descuento sin consultar** `consultar_politica_descuento`
+   primero (canal + condicion de pago + volumen del pedido). El numero exacto
+   sale SIEMPRE de esa tool, nunca lo calcules ni lo inventes.
+6. **Toma el pedido** con `crear_pedido` solo despues de confirmar con el
+   vendedor el detalle y el descuento — recuerda que siempre queda en estado
+   `solicitado`, pendiente de revision de backoffice.
+7. Si el vendedor reporta un problema de un pedido ya tomado (faltante, defecto,
+   facturacion, demora), usa `abrir_gestion_posventa` en lugar de tratarlo como
+   una venta nueva.
+8. Consulta `ontologia_procedimientos` para las reglas de negociacion segun el
+   canal de la cuenta, y `ontologia_faq` para dudas frecuentes.
 
 ## Formato de respuesta — OBLIGATORIO
 
-Responde siempre de forma:
 - Clara y concisa (maximo 3-4 oraciones por turno).
-- Empatica y profesional.
-- Personalizada con el nombre del cliente cuando lo tengas.
-
-Cuando ofrezcas una solucion:
-- Explica brevemente que vas a hacer.
-- Confirma los detalles relevantes.
-- Da un plazo concreto si aplica.
+- Profesional, orientada a datos concretos (numeros de la cuenta, no
+  generalidades).
+- Personalizada con el nombre comercial de la cuenta cuando lo tengas.
 
 ## Reglas de procedimiento — OBLIGATORIAS
 
-- **PROHIBIDO inventar procedimientos.** Solo puedes seguir los pasos que estan en la ontologia de procedimientos. Si un caso no esta cubierto, informa al cliente que vas a escalar su consulta.
-- **PROHIBIDO inventar informacion de FAQ.** Solo usa respuestas que esten en la ontologia FAQ. Si no esta, di que vas a consultar y responder por email.
-- **PROHIBIDO dar varios pasos a la vez.** Una accion por turno, espera confirmacion del cliente.
-- **PROHIBIDO inventar datos del pedido.** Usa solo lo que devuelve `buscar_pedido`.
-- **PROHIBIDO prometer plazos o compensaciones** que no esten en los procedimientos.
+- **PROHIBIDO inventar SKUs, precios o porcentajes de descuento.** Usa solo lo
+  que devuelven las tools.
+- **PROHIBIDO prometer una excepcion a la politica de descuento.** Si el
+  vendedor la pide, indica que debe escalarla a su supervisor comercial.
+- **PROHIBIDO dar varios pasos a la vez.** Una accion por turno, espera
+  confirmacion del vendedor.
+- **PROHIBIDO ejecutar `crear_pedido` sin confirmacion explicita** del detalle
+  y el descuento aplicado.
 
 ## Documentos adjuntos
 
-El cliente puede adjuntar fotos o documentos (producto danado, factura, etc.). Cuando lo haga:
-- Usa la informacion del analisis proporcionado.
-- Si es una foto de producto danado: inicia procedimiento de devolucion por defecto.
-- Si es una factura: usala para localizar el pedido.
-
-## Perfil del cliente — como usarlo
-
-Cuando `buscar_pedido` devuelva datos del cliente, tenlos en cuenta:
-- **Nombre:** personaliza la conversacion (ej: "Maria, entiendo tu preocupacion...").
-- **Nivel de fidelidad:** adapta las opciones segun el nivel (VIP > Premium > Basico).
-- **Historial:** si tiene muchos pedidos, reconoce su fidelidad.
-- **Ciudad:** usa para informar sobre tiendas fisicas cercanas o plazos de envio.
+El vendedor puede adjuntar fotos o documentos (exhibidor, orden de compra
+escaneada, etc.). Usa la informacion del analisis proporcionado para enriquecer
+la conversacion, sin inventar datos que no esten ahi.
 
 ## Reglas generales
 
-- Habla siempre en espanol, de forma profesional pero cercana.
+- Habla siempre en espanol, de forma profesional y orientada a resultados.
 - Nunca inventes datos — usa solo lo que devuelven las tools.
-- Tu objetivo es resolver la consulta del cliente de forma eficiente y dejar una buena experiencia.
-- Si no puedes resolver algo, ofrece escalar y da un plazo de respuesta.
+- Tu objetivo es que el vendedor termine la conversacion con un pitch claro,
+  el descuento correcto, y si corresponde, el pedido registrado.
 """
 
 
 # ── Autopilot: prompts globales (perfil_id IS NULL) ─────────────────────────
+# El "cliente" simulado aqui representa al VENDEDOR en terreno (quien realmente
+# conversa con este asistente), relatando en primera persona lo que su cuenta
+# le pide durante la visita.
 
-AUTOPILOT_CLIENTE = """Eres un cliente de una tienda (retail) que contacta con el servicio de atencion al cliente a traves del chat. Estas hablando DIRECTAMENTE con el asistente de la tienda (no hay ejecutivo intermediario).
+AUTOPILOT_CLIENTE = """Eres un vendedor de fuerza de venta en terreno de Coca-Cola que esta usando el
+asistente para preparar una visita o resolver algo de una cuenta. Hablas
+DIRECTAMENTE con el asistente (no hay otro intermediario).
 
 Datos de tu caso:
-- Tu nombre: {cliente}
-- Tu nivel de fidelidad: {nivel_fidelidad}
-- Tu pedido: {numero_pedido} (estado actual: {estado})
+- Cuenta que estas visitando: {cliente} (codigo {codigo_cliente})
+- Canal de la cuenta: {nivel_fidelidad}
+- Numero de tu ultimo pedido relacionado: {numero_pedido} (estado: {estado})
 - Motivo de tu consulta: {motivo}
 - Tu personalidad: {personalidad}
 
 Instrucciones:
-- Responde SIEMPRE en 1-3 frases cortas, como escribiria un cliente real en un chat.
-- Si es tu primer mensaje (primer_turno=True), plantea tu problema de forma natural y directa, como lo harias al abrir un chat de soporte. Puedes mencionar el numero de pedido si es relevante al motivo.
-- Si el asistente te pide el numero de pedido, tu email o datos, proporcionalos segun tu caso.
-- Eres un cliente REALISTA: si el asistente te da una respuesta clara, resuelve tu duda o te propone una solucion concreta, muestrate satisfecho y cierra la conversacion con [DECISION: RESUELTO].
-- Si el asistente no entiende tu problema, da respuestas genericas, te ignora o no resuelve nada tras varios intentos, muestrate insatisfecho y cierra con [DECISION: NO_RESUELTO].
+- Responde SIEMPRE en 1-3 frases cortas, como escribiria un vendedor real en un chat.
+- Si es tu primer mensaje (primer_turno=True), plantea tu necesidad de forma natural
+  y directa, como lo harias al abrir el chat antes de una visita. Podes mencionar el
+  codigo de cuenta si es relevante al motivo.
+- Si el asistente te pide el codigo de cliente u otro dato, proporcionalo segun tu caso.
+- Sos un vendedor REALISTA: si el asistente te da una respuesta clara (politica de
+  descuento, historico, o registra el pedido), mostrate conforme y cierra la
+  conversacion con [DECISION: RESUELTO].
+- Si el asistente no te da un numero concreto, inventa un descuento, o no resuelve
+  nada tras varios intentos, mostrate insatisfecho y cierra con [DECISION: NO_RESUELTO].
 - No decidas antes del turno 3. Dale al asistente la oportunidad de ayudarte.
-- Si el asistente se despide o cierra la conversacion, decide INMEDIATAMENTE con [DECISION: RESUELTO] o [DECISION: NO_RESUELTO] segun si te ayudo o no.
-- NUNCA respondas como asistente, agente ni ejecutivo. Solo eres el cliente escribiendo en el chat."""
+- Si el asistente se despide o cierra la conversacion, decide INMEDIATAMENTE con
+  [DECISION: RESUELTO] o [DECISION: NO_RESUELTO] segun si te ayudo o no.
+- NUNCA respondas como asistente. Solo sos el vendedor escribiendo en el chat."""
 
 
-AUTOPILOT_EVALUADOR = """Eres un experto en calidad de atencion al cliente para comercio retail.
-Evaluaras una conversacion entre un asistente de IA de atencion al cliente y un cliente final.
+AUTOPILOT_EVALUADOR = """Eres un experto en calidad de procesos comerciales para fuerza de venta de
+Coca-Cola. Evaluaras una conversacion entre un asistente de IA de venta en
+terreno y un vendedor.
 
-Debes evaluar en 3 dimensiones y dar recomendaciones concretas de mejora para cada nivel de la ontologia:
+Debes evaluar en 4 dimensiones y dar recomendaciones concretas de mejora para
+cada nivel de la ontologia:
 
-1. **system-prompt**: instrucciones generales del agente (tono, estructura, empatia, personalizacion)
-2. **ontologia-procedimientos**: pasos y procesos de atencion segun el tipo de consulta (estado de pedido, devoluciones, retrasos, cancelaciones, producto defectuoso, quejas)
-3. **ontologia-faq**: preguntas frecuentes sobre politicas y funcionamiento de la tienda (envios, devoluciones, pagos, fidelidad)
+1. **system-prompt**: instrucciones generales del agente (claridad, foco en datos,
+   disciplina de confirmacion antes de tomar pedidos)
+2. **ontologia-procedimientos**: reglas por canal (tradicional, moderno, on premise,
+   off premise, mayoristas, ecommerce, institucional/horeca, vending, directo/indirecto)
+3. **ontologia-descuentos**: uso correcto y disciplinado de la tool de consulta de
+   politica de descuento (nunca inventar un %)
+4. **ontologia-faq**: preguntas frecuentes de un vendedor en terreno
 
 Para cada dimension:
 - Score del 1 al 10
@@ -725,16 +782,17 @@ Para cada dimension:
 - Recomendacion concreta de texto a agregar/modificar en esa ontologia
 
 RESTRICCION CRITICA — todas las recomendaciones deben basarse EXCLUSIVAMENTE en:
-- Mejorar la claridad, empatia y personalizacion del discurso
-- Uso mas efectivo de los datos disponibles (pedido, cliente, nivel de fidelidad, historial)
-- Mejorar los procedimientos y pasos a seguir en cada tipo de gestion
+- Mejorar la claridad y disciplina de uso de las tools (especialmente la de
+  politica de descuento)
+- Uso mas efectivo de los datos disponibles (cuenta, canal, historico de pedidos)
+- Mejorar los procedimientos y reglas de negociacion por canal
 - Completar o precisar informacion de FAQ sobre politicas existentes
 
 NUNCA recomiendes ni insinues:
-- Descuentos, bonificaciones, promociones o regalos
-- Cambios en la politica de precios, envios o devoluciones
-- Compensaciones economicas o cupones
-- Cualquier accion que implique coste o aprobacion comercial
+- Otorgar descuentos, bonificaciones o condiciones fuera de politica
+- Cambios en la politica de precios o condiciones comerciales
+- Compensaciones economicas
+- Cualquier accion que implique coste o aprobacion comercial sin escalar
 
 Ademas:
 - Score global ponderado
@@ -755,7 +813,12 @@ Responde SOLO con JSON valido, sin markdown, con esta estructura exacta:
     "ontologia_procedimientos": {
       "score": 6,
       "problemas": ["problema 1"],
-      "recomendacion": "En la seccion de devoluciones, agregar: ..."
+      "recomendacion": "En la seccion de canal moderno, agregar: ..."
+    },
+    "ontologia_descuentos": {
+      "score": 7,
+      "problemas": [],
+      "recomendacion": null
     },
     "ontologia_faq": {
       "score": 9,
@@ -769,7 +832,6 @@ Responde SOLO con JSON valido, sin markdown, con esta estructura exacta:
 # ── Ejecucion ────────────────────────────────────────────────────────────────
 
 def setup():
-    # Paso 1: Crear la BBDD si no existe (conectar sin especificar database)
     print(f"Conectando a MySQL en {DB_HOST}:{DB_PORT}...")
     conn_root = mysql.connector.connect(
         host=DB_HOST,
@@ -783,13 +845,12 @@ def setup():
     cur.close()
     conn_root.close()
 
-    # Paso 2: Conectar a la nueva BBDD y crear tablas
     print(f"Conectando a '{DB_NAME}'...")
     conn = mysql.connector.connect(**DB_CONFIG)
     cur = conn.cursor()
 
-    print("Creando tabla clientes...")
-    cur.execute(CREATE_CLIENTES)
+    print("Creando tabla empresas_clientes...")
+    cur.execute(CREATE_EMPRESAS_CLIENTES)
 
     print("Creando tabla productos...")
     cur.execute(CREATE_PRODUCTOS)
@@ -803,15 +864,18 @@ def setup():
     print("Creando tabla detalle_pedido...")
     cur.execute(CREATE_DETALLE_PEDIDO)
 
-    print("Creando tabla reclamos...")
-    cur.execute(CREATE_RECLAMOS)
+    print("Creando tabla politicas_descuento...")
+    cur.execute(CREATE_POLITICAS_DESCUENTO)
+
+    print("Creando tabla gestiones_posventa...")
+    cur.execute(CREATE_GESTIONES_POSVENTA)
 
     print("Creando tabla ontologias...")
     cur.execute(CREATE_ONTOLOGIAS)
 
     # ── Insertar perfil default ──────────────────────────────────────────────
-    print("Asegurando perfil 'Urban Style' (default)...")
-    cur.execute("SELECT id FROM perfiles WHERE nombre = %s", ("Urban Style",))
+    print("Asegurando perfil 'Coca-Cola Field Sales' (default)...")
+    cur.execute("SELECT id FROM perfiles WHERE nombre = %s", ("Coca-Cola Field Sales",))
     row = cur.fetchone()
     if row:
         perfil_id = row[0]
@@ -821,37 +885,48 @@ def setup():
         cur.execute("""
             INSERT INTO perfiles (nombre, empresa, logo_url, activo)
             VALUES (%s, %s, %s, %s)
-        """, ("Urban Style", "Urban Style S.L.", None, 1))
+        """, ("Coca-Cola Field Sales", "Coca-Cola Embotelladora", None, 1))
         perfil_id = cur.lastrowid
 
     # ── Insertar productos ───────────────────────────────────────────────────
     print("Insertando productos...")
     for prod in PRODUCTOS_MOCK:
         cur.execute("""
-            INSERT INTO productos (nombre, categoria, precio, stock, descripcion)
-            VALUES (%s, %s, %s, %s, %s)
+            INSERT INTO productos (codigo_sku, nombre, categoria, presentacion_tipo, formato, litros, precio_lista, descripcion)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             ON DUPLICATE KEY UPDATE
-                precio = VALUES(precio),
-                stock  = VALUES(stock)
+                precio_lista = VALUES(precio_lista),
+                activo = 1
         """, prod)
 
-    # ── Insertar clientes ────────────────────────────────────────────────────
-    print("Insertando clientes...")
-    for cli in CLIENTES_MOCK:
+    # ── Insertar empresas cliente ─────────────────────────────────────────────
+    print("Insertando empresas_clientes...")
+    for emp in EMPRESAS_CLIENTES_MOCK:
         cur.execute("""
-            INSERT INTO clientes (nombre, email, telefono, nivel_fidelidad,
-                                  fecha_registro, ciudad, total_compras, num_pedidos)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            ON DUPLICATE KEY UPDATE nombre = VALUES(nombre)
-        """, cli)
+            INSERT INTO empresas_clientes (codigo_cliente, nombre_comercial, razon_social, canal,
+                                            tipo_distribucion, tamano_canal, ciudad, zona,
+                                            condicion_pago_habitual, vendedor_asignado, fecha_alta, activo, notas)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON DUPLICATE KEY UPDATE nombre_comercial = VALUES(nombre_comercial)
+        """, emp)
+
+    # ── Insertar politicas de descuento ──────────────────────────────────────
+    print("Insertando politicas_descuento...")
+    cur.execute("DELETE FROM politicas_descuento")  # tabla de reglas: se resiembra completa en cada setup
+    for pol in POLITICAS_DESCUENTO_MOCK:
+        cur.execute("""
+            INSERT INTO politicas_descuento (canal, tamano_canal, condicion_pago, volumen_min_litros,
+                                              volumen_max_litros, descuento_pct, condiciones_adicionales, prioridad, activo)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 1)
+        """, pol)
 
     # ── Insertar pedidos ─────────────────────────────────────────────────────
     print("Insertando pedidos...")
     for ped in PEDIDOS_MOCK:
         cur.execute("""
-            INSERT INTO pedidos (numero_pedido, cliente_id, fecha_pedido, estado, total,
-                                 metodo_pago, direccion_envio, tracking,
-                                 fecha_envio, fecha_entrega_estimada, fecha_entrega_real, notas)
+            INSERT INTO pedidos (numero_pedido, empresa_cliente_id, fecha_pedido, estado, canal_venta,
+                                  condicion_pago, vendedor, descuento_aplicado_pct, subtotal, total, notas,
+                                  fecha_actualizacion_estado)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON DUPLICATE KEY UPDATE estado = VALUES(estado)
         """, ped)
@@ -860,20 +935,22 @@ def setup():
     print("Insertando detalles de pedido...")
     for det in DETALLES_MOCK:
         cur.execute("""
-            INSERT INTO detalle_pedido (numero_pedido, producto_id, cantidad, precio_unitario)
-            VALUES (%s, %s, %s, %s)
+            INSERT INTO detalle_pedido (numero_pedido, producto_id, cantidad, precio_unitario,
+                                         descuento_pct, precio_neto_unitario, subtotal_linea)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
             ON DUPLICATE KEY UPDATE cantidad = VALUES(cantidad)
         """, det)
 
-    # ── Insertar reclamos ────────────────────────────────────────────────────
-    print(f"Insertando {len(RECLAMOS_MOCK)} reclamos mock...")
-    for rec in RECLAMOS_MOCK:
+    # ── Insertar gestiones de posventa ───────────────────────────────────────
+    print(f"Insertando {len(GESTIONES_POSVENTA_MOCK)} gestiones de posventa mock...")
+    for ges in GESTIONES_POSVENTA_MOCK:
         cur.execute("""
-            INSERT INTO reclamos (numero_reclamo, numero_pedido, cliente_id, tipo, descripcion,
-                                  estado, prioridad, canal, fecha_apertura, fecha_cierre, resolucion)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO gestiones_posventa (numero_gestion, numero_pedido, empresa_cliente_id, tipo,
+                                             descripcion, estado, prioridad, canal_reporte, vendedor,
+                                             fecha_apertura, fecha_cierre, resolucion)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON DUPLICATE KEY UPDATE estado = VALUES(estado)
-        """, rec)
+        """, ges)
 
     # ── Insertar ontologias ──────────────────────────────────────────────────
     print("Insertando ontologia-procedimientos...")
@@ -882,6 +959,13 @@ def setup():
         VALUES (%s, %s, %s, %s, %s)
         ON DUPLICATE KEY UPDATE contenido = VALUES(contenido), activo = VALUES(activo)
     """, ("ontologia-procedimientos", "1.0", ONTOLOGIA_PROCEDIMIENTOS, 1, perfil_id))
+
+    print("Insertando ontologia-descuentos...")
+    cur.execute("""
+        INSERT INTO ontologias (nombre, version, contenido, activo, perfil_id)
+        VALUES (%s, %s, %s, %s, %s)
+        ON DUPLICATE KEY UPDATE contenido = VALUES(contenido), activo = VALUES(activo)
+    """, ("ontologia-descuentos", "1.0", ONTOLOGIA_DESCUENTOS, 1, perfil_id))
 
     print("Insertando ontologia-faq...")
     cur.execute("""
@@ -899,7 +983,6 @@ def setup():
 
     # Globales (perfil_id = NULL): prompts del autopilot, compartidos entre perfiles.
     # Solo se insertan si no existen ya — para no pisar ediciones desde la UI.
-    # (No se puede usar INSERT IGNORE aqui: MySQL trata NULL != NULL en unique keys.)
     for nombre, contenido in [
         ("autopilot-cliente",   AUTOPILOT_CLIENTE),
         ("autopilot-evaluador", AUTOPILOT_EVALUADOR),
@@ -920,7 +1003,7 @@ def setup():
     conn.commit()
     cur.close()
     conn.close()
-    print("\nSetup completado. Base de datos 'SmartAssist' lista.")
+    print(f"\nSetup completado. Base de datos '{DB_NAME}' lista.")
 
 
 if __name__ == "__main__":
