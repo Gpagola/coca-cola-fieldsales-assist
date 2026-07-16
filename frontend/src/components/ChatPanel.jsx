@@ -28,8 +28,6 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
   const [riskProfile, setRiskProfile]     = useState(null)
   const [retention, setRetention]         = useState(null)
   const [sentimentPts, setSentimentPts]   = useState([])
-  const [showPedidoPicker, setShowPedidoPicker] = useState(false)
-  const [pedidoList, setPedidoList]       = useState([])
   const bottomRef    = useRef(null)
   const textareaRef  = useRef(null)
   const abortRef     = useRef(null)
@@ -168,16 +166,6 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
           setAgentStatus("")
           abortRef.current = null
         }
-      } else {
-        // Cargar pedidos y mostrar picker (solo cuando no se llego con una cuenta ya identificada)
-        try {
-          const op = await fetch(`${API}/autopilot/opciones`)
-          const data = await op.json()
-          if (data.pedidos?.length) {
-            setPedidoList(data.pedidos)
-            setShowPedidoPicker(true)
-          }
-        } catch {}
       }
     }
     init()
@@ -458,50 +446,6 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
         )}
         <div ref={bottomRef} />
       </div>
-
-      {/* ── Popup selector de pedido ── */}
-      {showPedidoPicker && (
-        <div className="poliza-picker-overlay" onClick={() => setShowPedidoPicker(false)}>
-          <div className="poliza-picker" onClick={e => e.stopPropagation()}>
-            <div className="poliza-picker-header">
-              <span className="poliza-picker-title">Seleccionar pedido</span>
-              <button className="poliza-picker-close" onClick={() => setShowPedidoPicker(false)} title="Cerrar el selector de pedidos. También puedes escribir el número directamente en el chat si lo conoces.">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-                </svg>
-              </button>
-            </div>
-            <div className="poliza-picker-table-wrap">
-              <table className="poliza-picker-table">
-                <thead>
-                  <tr>
-                    <th>Pedido</th>
-                    <th>Cuenta</th>
-                    <th>Estado</th>
-                    <th>Total</th>
-                    <th>Canal</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {pedidoList.map(p => (
-                    <tr key={p.numero_pedido} onClick={() => {
-                      setInput(p.numero_pedido)
-                      setShowPedidoPicker(false)
-                      textareaRef.current?.focus()
-                    }}>
-                      <td className="pp-numero">{p.numero_pedido}</td>
-                      <td>{p.cliente || "—"}</td>
-                      <td><span className={`pp-badge estado-${p.estado?.toLowerCase().replace(/\s+/g, "-")}`}>{p.estado}</span></td>
-                      <td>{p.total?.toFixed ? p.total.toFixed(2) : p.total}</td>
-                      <td><span className={`pp-badge fidelidad-${p.nivel_fidelidad?.toLowerCase()}`}>{p.nivel_fidelidad}</span></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ── Modal de evaluación (solo en modo ontologista) ── */}
       {showEval && (evaluating || evaluation) && (
