@@ -11,6 +11,10 @@ export default function GestionesPosventaPanel() {
   const [loading, setLoading]     = useState(true)
   const [error, setError]         = useState(null)
 
+  const [detalle, setDetalle]         = useState(null)
+  const [detalleLoading, setDetalleLoading] = useState(false)
+  const [detalleError, setDetalleError]     = useState(null)
+
   const cargar = useCallback(async (filtroEstado) => {
     setLoading(true)
     setError(null)
@@ -29,6 +33,27 @@ export default function GestionesPosventaPanel() {
   }, [])
 
   useEffect(() => { cargar(estado) }, [cargar, estado])
+
+  async function verDetalle(numeroGestion) {
+    setDetalle({ numero_gestion: numeroGestion })
+    setDetalleLoading(true)
+    setDetalleError(null)
+    try {
+      const r = await fetch(`${API}/cartera/gestiones-posventa/${numeroGestion}`)
+      const data = await r.json()
+      if (data.error) throw new Error(data.error)
+      setDetalle(data)
+    } catch (e) {
+      setDetalleError(e.message)
+    } finally {
+      setDetalleLoading(false)
+    }
+  }
+
+  function cerrarDetalle() {
+    setDetalle(null)
+    setDetalleError(null)
+  }
 
   return (
     <div className="portal-panel">
@@ -58,6 +83,7 @@ export default function GestionesPosventaPanel() {
                 <th>Estado</th>
                 <th>Prioridad</th>
                 <th>Apertura</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
@@ -70,10 +96,58 @@ export default function GestionesPosventaPanel() {
                   <td><span className={`portal-badge gestion-estado-${g.estado}`}>{g.estado}</span></td>
                   <td><span className={`portal-badge prioridad-${g.prioridad}`}>{g.prioridad}</span></td>
                   <td>{g.fecha_apertura}</td>
+                  <td>
+                    <button className="portal-action-btn" onClick={() => verDetalle(g.numero_gestion)}>
+                      Detalle
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {detalle && (
+        <div className="portal-modal-overlay" onClick={cerrarDetalle}>
+          <div className="portal-modal" onClick={e => e.stopPropagation()}>
+            <div className="portal-modal-header">
+              <span className="portal-modal-title">Gestión {detalle.numero_gestion}</span>
+              <button className="portal-modal-close" onClick={cerrarDetalle} title="Cerrar">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+            </div>
+            <div className="portal-modal-body">
+              {detalleLoading && <div className="portal-empty">Cargando detalle...</div>}
+              {detalleError && <div className="portal-empty portal-error">Error: {detalleError}</div>}
+              {!detalleLoading && !detalleError && detalle.tipo && (<>
+                <div className="portal-modal-meta">
+                  <span>{detalle.nombre_comercial} <span className="portal-muted">({detalle.codigo_cliente})</span></span>
+                  <span className={`portal-badge gestion-estado-${detalle.estado}`}>{detalle.estado}</span>
+                  <span className={`portal-badge prioridad-${detalle.prioridad}`}>{detalle.prioridad}</span>
+                  <span className="portal-muted">{detalle.tipo}</span>
+                  {detalle.numero_pedido && <span className="portal-muted">Pedido: {detalle.numero_pedido}</span>}
+                </div>
+
+                <h4 className="portal-modal-section-title">Solicitud del vendedor</h4>
+                <p className="portal-modal-text">{detalle.descripcion}</p>
+
+                <h4 className="portal-modal-section-title">Ficha de cuenta e histórico (al momento de abrir la gestión)</h4>
+                <pre className="portal-modal-pre">{detalle.contexto_cuenta || "Sin contexto capturado."}</pre>
+
+                {detalle.resolucion && (<>
+                  <h4 className="portal-modal-section-title">Resolución</h4>
+                  <p className="portal-modal-text">{detalle.resolucion}</p>
+                </>)}
+
+                <div className="portal-modal-footer-meta">
+                  Apertura: {detalle.fecha_apertura} {detalle.fecha_cierre ? `· Cierre: ${detalle.fecha_cierre}` : ""} · Vendedor: {detalle.vendedor || "—"}
+                </div>
+              </>)}
+            </div>
+          </div>
         </div>
       )}
     </div>

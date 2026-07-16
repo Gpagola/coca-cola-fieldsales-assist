@@ -747,6 +747,42 @@ def cartera_gestiones_posventa():
     ])
 
 
+@app.route("/api/cartera/gestiones-posventa/<numero_gestion>", methods=["GET"])
+def cartera_gestion_posventa_detalle(numero_gestion):
+    """Detalle completo de una gestion de posventa: descripcion, contexto de cuenta e
+    historico capturados al momento de abrirla, estado, prioridad y resolucion."""
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT g.numero_gestion, e.nombre_comercial, e.codigo_cliente, g.numero_pedido,
+                   g.tipo, g.descripcion, g.contexto_cuenta, g.estado, g.prioridad,
+                   g.canal_reporte, g.vendedor, g.fecha_apertura, g.fecha_cierre, g.resolucion
+            FROM gestiones_posventa g
+            JOIN empresas_clientes e ON e.id = g.empresa_cliente_id
+            WHERE g.numero_gestion = %s
+        """, (numero_gestion.upper().strip(),))
+        row = cur.fetchone()
+        cur.close()
+    finally:
+        conn.close()
+
+    if not row:
+        return jsonify({"error": "Gestion no encontrada"}), 404
+
+    (num, nombre_e, codigo_e, num_ped, tipo, desc, contexto, estado, prio,
+     canal_rep, vendedor, f_ap, f_cie, resol) = row
+    return jsonify({
+        "numero_gestion": num, "nombre_comercial": nombre_e, "codigo_cliente": codigo_e,
+        "numero_pedido": num_ped, "tipo": tipo, "descripcion": desc,
+        "contexto_cuenta": contexto, "estado": estado, "prioridad": prio,
+        "canal_reporte": canal_rep, "vendedor": vendedor,
+        "fecha_apertura": f_ap.strftime("%d/%m/%Y %H:%M") if f_ap else "",
+        "fecha_cierre": f_cie.strftime("%d/%m/%Y %H:%M") if f_cie else None,
+        "resolucion": resol,
+    })
+
+
 # ── Endpoints de Politicas de Descuento (editor en AdminPanel) ──────────────
 
 _POLITICA_CAMPOS = (

@@ -122,6 +122,7 @@ CREATE TABLE IF NOT EXISTS gestiones_posventa (
     empresa_cliente_id  INT NOT NULL,
     tipo                VARCHAR(30) NOT NULL,
     descripcion         TEXT NOT NULL,
+    contexto_cuenta     LONGTEXT,
     estado              VARCHAR(20) NOT NULL DEFAULT 'abierto',
     prioridad           VARCHAR(10) NOT NULL DEFAULT 'media',
     canal_reporte       VARCHAR(20) NOT NULL DEFAULT 'chat',
@@ -869,6 +870,17 @@ def setup():
 
     print("Creando tabla gestiones_posventa...")
     cur.execute(CREATE_GESTIONES_POSVENTA)
+
+    # Migracion idempotente para instalaciones ya existentes (evitamos "ADD COLUMN IF NOT
+    # EXISTS": en algunos MySQL/MariaDB con plugins de terceros ese patron condicional puede
+    # comportarse mal; una consulta a information_schema + ALTER simple es mas portable).
+    cur.execute("""
+        SELECT COUNT(*) FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'gestiones_posventa' AND column_name = 'contexto_cuenta'
+    """)
+    if cur.fetchone()[0] == 0:
+        print("Agregando columna contexto_cuenta a gestiones_posventa...")
+        cur.execute("ALTER TABLE gestiones_posventa ADD COLUMN contexto_cuenta LONGTEXT")
 
     print("Creando tabla ontologias...")
     cur.execute(CREATE_ONTOLOGIAS)

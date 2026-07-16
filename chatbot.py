@@ -204,6 +204,61 @@ def _match_politica_descuento(cur, canal: str, condicion_pago: str, volumen_litr
 
 # ── Tools de lectura ───────────────────────────────────────────────────────────
 
+def _ficha_cuenta_texto(empresa: dict) -> str:
+    """Formatea la ficha de una cuenta (sin encabezado) — reusada por consultar_cuenta_cliente
+    y por el contexto que se guarda al abrir una gestion de posventa."""
+    return (
+        f"- Codigo: {empresa['codigo_cliente']}\n"
+        f"- Nombre comercial: {empresa['nombre_comercial']}\n"
+        f"- Razon social: {empresa['razon_social'] or 'No disponible'}\n"
+        f"- Canal: {empresa['canal']}\n"
+        f"- Tipo de distribucion: {empresa['tipo_distribucion']}\n"
+        f"- Tamano de canal: {empresa['tamano_canal']}\n"
+        f"- Ciudad / zona: {empresa['ciudad'] or 'No disponible'} / {empresa['zona'] or 'No disponible'}\n"
+        f"- Condicion de pago habitual: {empresa['condicion_pago_habitual']}\n"
+        f"- Vendedor asignado: {empresa['vendedor_asignado'] or 'No disponible'}\n"
+        f"- Cliente desde: {empresa['fecha_alta'].strftime('%d/%m/%Y')}"
+    )
+
+
+def _historico_pedidos_texto(cur, empresa: dict, limite: int = 5) -> str:
+    """Formatea el historico reciente de pedidos de una cuenta (sin encabezado) — reusada por
+    consultar_historico_pedidos y por el contexto que se guarda al abrir una gestion de posventa."""
+    cur.execute("""
+        SELECT numero_pedido, fecha_pedido, estado, condicion_pago, canal_venta,
+               descuento_aplicado_pct, total
+        FROM pedidos
+        WHERE empresa_cliente_id = %s
+        ORDER BY fecha_pedido DESC
+        LIMIT %s
+    """, (empresa["id"], limite))
+    pedidos = cur.fetchall()
+
+    cur.execute("""
+        SELECT COUNT(DISTINCT p.numero_pedido), COALESCE(SUM(dp.cantidad * pr.litros), 0), COALESCE(SUM(p.total), 0)
+        FROM pedidos p
+        JOIN detalle_pedido dp ON dp.numero_pedido = p.numero_pedido
+        JOIN productos pr ON pr.id = dp.producto_id
+        WHERE p.empresa_cliente_id = %s AND p.fecha_pedido >= CURDATE() - INTERVAL 90 DAY
+    """, (empresa["id"],))
+    num_pedidos_90, volumen_90, facturado_90 = cur.fetchone()
+
+    if not pedidos:
+        return "Sin pedidos registrados aun."
+
+    out = [f"Ultimos {len(pedidos)} pedidos:"]
+    for numero, fecha, estado, cond_pago, canal_venta, desc_pct, total in pedidos:
+        out.append(
+            f"- {numero} | {fecha.strftime('%d/%m/%Y')} | {estado} | {cond_pago} | "
+            f"canal: {canal_venta} | descuento: {float(desc_pct):.1f}% | total: {float(total):.2f}"
+        )
+    out.append(
+        f"Resumen ultimos 90 dias: {num_pedidos_90} pedidos, "
+        f"{float(volumen_90):.1f} litros, {float(facturado_90):.2f} facturado."
+    )
+    return "\n".join(out)
+
+
 @tool
 def consultar_cuenta_cliente(codigo_cliente: str) -> str:
     """Busca una cuenta (empresa cliente) por su codigo (formato CLI-XXXX) o, si no hay match
@@ -251,19 +306,7 @@ def consultar_cuenta_cliente(codigo_cliente: str) -> str:
         if not empresa["activo"]:
             return f"La cuenta {empresa['codigo_cliente']} ({empresa['nombre_comercial']}) figura como INACTIVA. Verifica con tu supervisor antes de continuar."
 
-        return (
-            f"Cuenta encontrada:\n"
-            f"- Codigo: {empresa['codigo_cliente']}\n"
-            f"- Nombre comercial: {empresa['nombre_comercial']}\n"
-            f"- Razon social: {empresa['razon_social'] or 'No disponible'}\n"
-            f"- Canal: {empresa['canal']}\n"
-            f"- Tipo de distribucion: {empresa['tipo_distribucion']}\n"
-            f"- Tamano de canal: {empresa['tamano_canal']}\n"
-            f"- Ciudad / zona: {empresa['ciudad'] or 'No disponible'} / {empresa['zona'] or 'No disponible'}\n"
-            f"- Condicion de pago habitual: {empresa['condicion_pago_habitual']}\n"
-            f"- Vendedor asignado: {empresa['vendedor_asignado'] or 'No disponible'}\n"
-            f"- Cliente desde: {empresa['fecha_alta'].strftime('%d/%m/%Y')}"
-        )
+        return "Cuenta encontrada:\n" + _ficha_cuenta_texto(empresa)
     finally:
         conn.close()
 
@@ -297,42 +340,12 @@ def consultar_historico_pedidos(codigo_cliente: str, limite: int = 10) -> str:
             cur.close()
             return f"No se encontro ninguna cuenta con codigo '{codigo}'. Verifica el dato con el vendedor."
 
-        cur.execute("""
-            SELECT numero_pedido, fecha_pedido, estado, condicion_pago, canal_venta,
-                   descuento_aplicado_pct, total
-            FROM pedidos
-            WHERE empresa_cliente_id = %s
-            ORDER BY fecha_pedido DESC
-            LIMIT %s
-        """, (empresa["id"], limite))
-        pedidos = cur.fetchall()
-
-        cur.execute("""
-            SELECT COUNT(DISTINCT p.numero_pedido), COALESCE(SUM(dp.cantidad * pr.litros), 0), COALESCE(SUM(p.total), 0)
-            FROM pedidos p
-            JOIN detalle_pedido dp ON dp.numero_pedido = p.numero_pedido
-            JOIN productos pr ON pr.id = dp.producto_id
-            WHERE p.empresa_cliente_id = %s AND p.fecha_pedido >= CURDATE() - INTERVAL 90 DAY
-        """, (empresa["id"],))
-        num_pedidos_90, volumen_90, facturado_90 = cur.fetchone()
+        historico = _historico_pedidos_texto(cur, empresa, limite)
         cur.close()
     finally:
         conn.close()
 
-    if not pedidos:
-        return f"La cuenta {empresa['codigo_cliente']} ({empresa['nombre_comercial']}) no tiene pedidos registrados aun."
-
-    out = [f"Historico de {empresa['nombre_comercial']} ({empresa['codigo_cliente']}) — ultimos {len(pedidos)} pedidos:"]
-    for numero, fecha, estado, cond_pago, canal_venta, desc_pct, total in pedidos:
-        out.append(
-            f"- {numero} | {fecha.strftime('%d/%m/%Y')} | {estado} | {cond_pago} | "
-            f"canal: {canal_venta} | descuento: {float(desc_pct):.1f}% | total: {float(total):.2f}"
-        )
-    out.append(
-        f"\nResumen ultimos 90 dias: {num_pedidos_90} pedidos, "
-        f"{float(volumen_90):.1f} litros, {float(facturado_90):.2f} facturado."
-    )
-    return "\n".join(out)
+    return f"Historico de {empresa['nombre_comercial']} ({empresa['codigo_cliente']}):\n{historico}"
 
 
 @tool
@@ -861,7 +874,12 @@ def agregar_nota_pedido(numero_pedido: str, nota: str) -> str:
 def abrir_gestion_posventa(codigo_cliente: str, numero_pedido: str, tipo: str, descripcion: str) -> str:
     """Abre una gestion de posventa formal vinculada a una cuenta (y opcionalmente a un pedido).
     Genera un numero de gestion GES-XXXX con estado 'abierto'. La prioridad se asigna
-    automaticamente segun el tamano de canal de la cuenta y el tipo de gestion.
+    automaticamente segun el tamano de canal de la cuenta y el tipo de gestion. La gestion
+    guarda automaticamente una ficha completa de la cuenta y su historico reciente de pedidos
+    junto con la descripcion — backoffice vera todo ese contexto sin pedirlo de nuevo, asi que
+    la `descripcion` debe enfocarse en explicar con claridad y en detalle CUAL ES LA SOLICITUD
+    o el problema puntual del vendedor (que paso, que pide, que resultado espera), no en repetir
+    datos de la cuenta.
 
     Tipos validos: producto_defectuoso, faltante_entrega, error_facturacion, reclamo_precio,
     logistica_retraso, solicitud_credito, otro.
@@ -904,6 +922,11 @@ def abrir_gestion_posventa(codigo_cliente: str, numero_pedido: str, tipo: str, d
         else:
             prioridad = "media" if tamano == "mediano" else "baja"
 
+        contexto_cuenta = (
+            f"FICHA DE CUENTA (al momento de abrir la gestion):\n{_ficha_cuenta_texto(empresa)}\n\n"
+            f"HISTORICO DE PEDIDOS:\n{_historico_pedidos_texto(cur, empresa, limite=5)}"
+        )
+
         cur.execute("SELECT COALESCE(MAX(id), 0) + 1 FROM gestiones_posventa")
         next_id = cur.fetchone()[0]
         numero_gestion = f"GES-{next_id:04d}"
@@ -911,9 +934,10 @@ def abrir_gestion_posventa(codigo_cliente: str, numero_pedido: str, tipo: str, d
         ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         cur.execute("""
             INSERT INTO gestiones_posventa (numero_gestion, numero_pedido, empresa_cliente_id, tipo,
-                                             descripcion, estado, prioridad, canal_reporte, vendedor, fecha_apertura)
-            VALUES (%s, %s, %s, %s, %s, 'abierto', %s, 'chat', %s, %s)
-        """, (numero_gestion, numero_ped, empresa["id"], tipo_norm, desc, prioridad,
+                                             descripcion, contexto_cuenta, estado, prioridad,
+                                             canal_reporte, vendedor, fecha_apertura)
+            VALUES (%s, %s, %s, %s, %s, %s, 'abierto', %s, 'chat', %s, %s)
+        """, (numero_gestion, numero_ped, empresa["id"], tipo_norm, desc, contexto_cuenta, prioridad,
               empresa["vendedor_asignado"], ahora))
 
         if numero_ped:
