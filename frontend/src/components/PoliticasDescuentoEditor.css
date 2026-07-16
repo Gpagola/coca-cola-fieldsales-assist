@@ -1,0 +1,163 @@
+.pol-editor {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+  padding: 4px;
+}
+
+.pol-editor-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+  flex-shrink: 0;
+}
+
+.pol-editor-hint {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-muted);
+  margin: 0;
+  max-width: 520px;
+}
+
+.pol-editor-hint code {
+  background: var(--bg-input);
+  padding: 1px 5px;
+  border-radius: 2px;
+  font-size: 10px;
+}
+
+.pol-add-btn {
+  flex-shrink: 0;
+  height: 30px;
+  padding: 0 14px;
+  border-radius: 2px;
+  border: 1px solid var(--text);
+  background: transparent;
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+
+.pol-add-btn:hover { background: var(--text); color: var(--bg-panel); }
+
+.pol-empty {
+  color: var(--text-faint);
+  font-size: 12px;
+  font-style: italic;
+  padding: 16px 0;
+}
+
+.pol-error { color: #c0392b; font-style: normal; }
+
+.pol-table-wrap {
+  flex: 1;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+}
+
+.pol-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: "Alliance No.1", sans-serif;
+  font-size: 11px;
+}
+
+.pol-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--bg-panel);
+  padding: 8px 8px;
+  text-align: left;
+  font-size: 9px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.pol-table tbody td {
+  padding: 5px 8px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+  vertical-align: middle;
+}
+
+.pol-row-dirty { background: color-mix(in srgb, var(--text) 4%, transparent); }
+
+.pol-table select,
+.pol-table input[type="text"],
+.pol-table input[type="number"] {
+  width: 100%;
+  min-width: 64px;
+  height: 26px;
+  padding: 0 6px;
+  border-radius: 2px;
+  border: 1px solid var(--border);
+  background: var(--bg-input);
+  color: var(--text);
+  font-size: 11px;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.pol-table input[type="text"] { min-width: 140px; }
+
+.pol-table select:focus,
+.pol-table input:focus {
+  outline: none;
+  border-color: var(--text);
+}
+
+.pol-activo-cell { text-align: center; }
+.pol-activo-cell input[type="checkbox"] { width: 15px; height: 15px; cursor: pointer; }
+
+.pol-actions-cell {
+  display: flex;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.pol-save-btn,
+.pol-delete-btn {
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 2px;
+  font-size: 10px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+
+.pol-save-btn {
+  border: 1px solid var(--text);
+  background: transparent;
+  color: var(--text);
+}
+.pol-save-btn:hover:not(:disabled) { background: var(--text); color: var(--bg-panel); }
+.pol-save-btn:disabled { opacity: 0.35; cursor: default; }
+
+.pol-delete-btn {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+}
+.pol-delete-btn:hover:not(:disabled) { border-color: #c0392b; color: #c0392b; }
+.pol-delete-btn:disabled { opacity: 0.35; cursor: default; }
+
+.pol-empty-row {
+  text-align: center;
+  color: var(--text-faint);
+  font-style: italic;
+  padding: 20px 0;
+}

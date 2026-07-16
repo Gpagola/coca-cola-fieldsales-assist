@@ -910,15 +910,20 @@ def setup():
             ON DUPLICATE KEY UPDATE nombre_comercial = VALUES(nombre_comercial)
         """, emp)
 
-    # ── Insertar politicas de descuento ──────────────────────────────────────
-    print("Insertando politicas_descuento...")
-    cur.execute("DELETE FROM politicas_descuento")  # tabla de reglas: se resiembra completa en cada setup
-    for pol in POLITICAS_DESCUENTO_MOCK:
-        cur.execute("""
-            INSERT INTO politicas_descuento (canal, tamano_canal, condicion_pago, volumen_min_litros,
-                                              volumen_max_litros, descuento_pct, condiciones_adicionales, prioridad, activo)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 1)
-        """, pol)
+    # ── Insertar politicas de descuento (solo si la tabla esta vacia) ────────
+    # No se resiembra en cada corrida para no pisar ediciones hechas desde la UI
+    # (panel "Politicas de descuento" en AdminPanel, via /api/politicas-descuento).
+    cur.execute("SELECT COUNT(*) FROM politicas_descuento")
+    if cur.fetchone()[0] == 0:
+        print("Insertando politicas_descuento (seed inicial)...")
+        for pol in POLITICAS_DESCUENTO_MOCK:
+            cur.execute("""
+                INSERT INTO politicas_descuento (canal, tamano_canal, condicion_pago, volumen_min_litros,
+                                                  volumen_max_litros, descuento_pct, condiciones_adicionales, prioridad, activo)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 1)
+            """, pol)
+    else:
+        print("politicas_descuento ya tiene datos, no se resiembra (se conservan las ediciones de la UI).")
 
     # ── Insertar pedidos ─────────────────────────────────────────────────────
     print("Insertando pedidos...")

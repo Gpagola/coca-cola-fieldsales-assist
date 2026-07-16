@@ -661,7 +661,8 @@ def cartera_clientes():
 
 @app.route("/api/cartera/pedidos-en-curso", methods=["GET"])
 def cartera_pedidos_en_curso():
-    """Lista los pedidos en estados no finales (solicitado, en_revision, aprobado)."""
+    """Lista los pedidos en estados no finales (solicitado, en_revision, aprobado),
+    incluyendo el detalle de lineas (producto, cantidad, precio acordado) de cada uno."""
     conn = get_conn()
     try:
         cur = conn.cursor()
@@ -674,6 +675,24 @@ def cartera_pedidos_en_curso():
             ORDER BY p.fecha_pedido DESC
         """)
         rows = cur.fetchall()
+
+        detalle_por_pedido = {}
+        if rows:
+            numeros = [r[0] for r in rows]
+            placeholders = ",".join(["%s"] * len(numeros))
+            cur.execute(f"""
+                SELECT dp.numero_pedido, pr.nombre, pr.codigo_sku, dp.cantidad,
+                       dp.precio_unitario, dp.descuento_pct, dp.precio_neto_unitario, dp.subtotal_linea
+                FROM detalle_pedido dp
+                JOIN productos pr ON pr.id = dp.producto_id
+                WHERE dp.numero_pedido IN ({placeholders})
+            """, numeros)
+            for numero, nombre, sku, cantidad, precio_unit, desc_pct, precio_neto, subtotal in cur.fetchall():
+                detalle_por_pedido.setdefault(numero, []).append({
+                    "producto": nombre, "codigo_sku": sku, "cantidad": cantidad,
+                    "precio_unitario": float(precio_unit), "descuento_pct": float(desc_pct),
+                    "precio_neto_unitario": float(precio_neto), "subtotal_linea": float(subtotal),
+                })
         cur.close()
     finally:
         conn.close()
@@ -683,7 +702,7 @@ def cartera_pedidos_en_curso():
             "numero_pedido": r[0], "nombre_comercial": r[1], "codigo_cliente": r[2],
             "canal_venta": r[3], "fecha_pedido": r[4].strftime("%d/%m/%Y") if r[4] else "",
             "estado": r[5], "condicion_pago": r[6], "total": float(r[7]) if r[7] is not None else 0.0,
-            "vendedor": r[8],
+            "vendedor": r[8], "detalle": detalle_por_pedido.get(r[0], []),
         }
         for r in rows
     ])
@@ -726,6 +745,145 @@ def cartera_gestiones_posventa():
         }
         for r in rows
     ])
+
+
+# ── Endpoints de Politicas de Descuento (editor en AdminPanel) ──────────────
+
+_POLITICA_CAMPOS = (
+    "canal", "tamano_canal", "condicion_pago", "volumen_min_litros",
+    "volumen_max_litros", "descuento_pct", "condiciones_adicionales", "prioridad", "activo",
+)
+
+
+def _serializar_politica(row):
+    (id_, canal, tamano, cond, vmin, vmax, pct, extra, prio, activo) = row
+    return {
+        "id": id_, "canal": canal, "tamano_canal": tamano, "condicion_pago": cond,
+        "volumen_min_litros": float(vmin), "volumen_max_litros": float(vmax) if vmax is not None else None,
+        "descuento_pct": float(pct), "condiciones_adicionales": extra, "prioridad": prio,
+        "activo": bool(activo),
+    }
+
+
+@app.route("/api/politicas-descuento", methods=["GET"])
+def listar_politicas_descuento():
+    """Lista todas las politicas de descuento (activas e inactivas)."""
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT id, canal, tamano_canal, condicion_pago, volumen_min_litros, volumen_max_litros,
+                   descuento_pct, condiciones_adicionales, prioridad, activo
+            FROM politicas_descuento
+            ORDER BY canal, condicion_pago, volumen_min_litros
+        """)
+        rows = cur.fetchall()
+        cur.close()
+    finally:
+        conn.close()
+    return jsonify([_serializar_politica(r) for r in rows])
+
+
+@app.route("/api/politicas-descuento", methods=["POST"])
+def crear_politica_descuento():
+    """Crea una politica de descuento nueva. Body: canal, tamano_canal, condicion_pago,
+    volumen_min_litros, volumen_max_litros, descuento_pct, condiciones_adicionales, prioridad, activo."""
+    data = request.get_json() or {}
+    canal = (data.get("canal") or "").strip().lower()
+    condicion_pago = (data.get("condicion_pago") or "").strip().lower()
+    if not canal or condicion_pago not in ("contado", "credito"):
+        return jsonify({"error": "canal y condicion_pago ('contado'/'credito') son requeridos"}), 400
+
+    tamano = (data.get("tamano_canal") or "").strip().lower() or None
+    vmin = data.get("volumen_min_litros", 0) or 0
+    vmax = data.get("volumen_max_litros")
+    vmax = None if vmax in (None, "", 0) and vmax != 0 else vmax
+    try:
+        descuento_pct = float(data.get("descuento_pct", 0))
+    except (TypeError, ValueError):
+        return jsonify({"error": "descuento_pct debe ser un numero"}), 400
+    condiciones = (data.get("condiciones_adicionales") or "").strip() or None
+    prioridad = int(data.get("prioridad", 0) or 0)
+    activo = 1 if data.get("activo", True) else 0
+
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO politicas_descuento (canal, tamano_canal, condicion_pago, volumen_min_litros,
+                                              volumen_max_litros, descuento_pct, condiciones_adicionales,
+                                              prioridad, activo)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """, (canal, tamano, condicion_pago, vmin, vmax, descuento_pct, condiciones, prioridad, activo))
+        new_id = cur.lastrowid
+        conn.commit()
+        cur.close()
+    finally:
+        conn.close()
+
+    return jsonify({"ok": True, "id": new_id}), 201
+
+
+@app.route("/api/politicas-descuento/<int:politica_id>", methods=["PUT"])
+def actualizar_politica_descuento(politica_id):
+    """Actualiza una politica de descuento existente. Solo actualiza los campos presentes en el body."""
+    data = request.get_json() or {}
+    fields = []
+    args = []
+    for key in _POLITICA_CAMPOS:
+        if key not in data:
+            continue
+        val = data[key]
+        if key == "canal":
+            val = (val or "").strip().lower()
+        elif key == "tamano_canal":
+            val = (val or "").strip().lower() or None
+        elif key == "condicion_pago":
+            val = (val or "").strip().lower()
+            if val not in ("contado", "credito"):
+                return jsonify({"error": "condicion_pago debe ser 'contado' o 'credito'"}), 400
+        elif key == "condiciones_adicionales":
+            val = (val or "").strip() or None
+        elif key == "activo":
+            val = 1 if val else 0
+        fields.append(f"{key} = %s")
+        args.append(val)
+
+    if not fields:
+        return jsonify({"error": "Nada para actualizar"}), 400
+
+    args.append(politica_id)
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(f"UPDATE politicas_descuento SET {', '.join(fields)} WHERE id = %s", tuple(args))
+        affected = cur.rowcount
+        conn.commit()
+        cur.close()
+    finally:
+        conn.close()
+
+    if affected == 0:
+        return jsonify({"error": "Politica no encontrada"}), 404
+    return jsonify({"ok": True})
+
+
+@app.route("/api/politicas-descuento/<int:politica_id>", methods=["DELETE"])
+def borrar_politica_descuento(politica_id):
+    """Elimina una politica de descuento."""
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM politicas_descuento WHERE id = %s", (politica_id,))
+        affected = cur.rowcount
+        conn.commit()
+        cur.close()
+    finally:
+        conn.close()
+
+    if affected == 0:
+        return jsonify({"error": "Politica no encontrada"}), 404
+    return jsonify({"ok": True})
 
 
 # ── Endpoints de administracion ───────────────────────────────────────────────
@@ -1201,4 +1359,4 @@ def autopilot_evaluate():
 # ── Arranque ──────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    app.run(debug=False, use_reloader=False, port=5002, threaded=True)
+    app.run(debug=False, use_reloader=False, port=int(os.getenv("PORT", 5002)), threaded=True)

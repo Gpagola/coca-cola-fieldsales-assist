@@ -7,6 +7,11 @@ export default function PedidosEnCursoPanel() {
   const [pedidos, setPedidos] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError]     = useState(null)
+  const [expandido, setExpandido] = useState(null) // numero_pedido actualmente expandido, o null
+
+  function toggleExpandido(numero) {
+    setExpandido(prev => prev === numero ? null : numero)
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -32,6 +37,7 @@ export default function PedidosEnCursoPanel() {
           <table className="portal-table">
             <thead>
               <tr>
+                <th></th>
                 <th>Pedido</th>
                 <th>Cuenta</th>
                 <th>Canal</th>
@@ -44,16 +50,60 @@ export default function PedidosEnCursoPanel() {
             </thead>
             <tbody>
               {pedidos.map(p => (
-                <tr key={p.numero_pedido}>
-                  <td className="portal-numero">{p.numero_pedido}</td>
-                  <td>{p.nombre_comercial} <span className="portal-muted">({p.codigo_cliente})</span></td>
-                  <td><span className={`portal-badge canal-${p.canal_venta}`}>{p.canal_venta}</span></td>
-                  <td>{p.fecha_pedido}</td>
-                  <td><span className={`portal-badge pedido-estado-${p.estado}`}>{p.estado}</span></td>
-                  <td>{p.condicion_pago}</td>
-                  <td>{p.total?.toFixed ? p.total.toFixed(2) : p.total}</td>
-                  <td>{p.vendedor || "—"}</td>
-                </tr>
+                <>
+                  <tr
+                    key={p.numero_pedido}
+                    className="portal-row-expandible"
+                    onClick={() => toggleExpandido(p.numero_pedido)}
+                    title="Ver el detalle de productos, cantidad y precio acordado de este pedido"
+                  >
+                    <td className="portal-expand-toggle">{expandido === p.numero_pedido ? "▾" : "▸"}</td>
+                    <td className="portal-numero">{p.numero_pedido}</td>
+                    <td>{p.nombre_comercial} <span className="portal-muted">({p.codigo_cliente})</span></td>
+                    <td><span className={`portal-badge canal-${p.canal_venta}`}>{p.canal_venta}</span></td>
+                    <td>{p.fecha_pedido}</td>
+                    <td><span className={`portal-badge pedido-estado-${p.estado}`}>{p.estado}</span></td>
+                    <td>{p.condicion_pago}</td>
+                    <td>{p.total?.toFixed ? p.total.toFixed(2) : p.total}</td>
+                    <td>{p.vendedor || "—"}</td>
+                  </tr>
+                  {expandido === p.numero_pedido && (
+                    <tr key={`${p.numero_pedido}-detalle`} className="portal-detail-row">
+                      <td colSpan={9}>
+                        {p.detalle?.length ? (
+                          <table className="portal-detail-table">
+                            <thead>
+                              <tr>
+                                <th>SKU</th>
+                                <th>Producto</th>
+                                <th>Cantidad</th>
+                                <th>Precio lista</th>
+                                <th>Descuento</th>
+                                <th>Precio acordado</th>
+                                <th>Subtotal línea</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {p.detalle.map((d, i) => (
+                                <tr key={i}>
+                                  <td>{d.codigo_sku}</td>
+                                  <td>{d.producto}</td>
+                                  <td>{d.cantidad}</td>
+                                  <td>{d.precio_unitario.toFixed(2)}</td>
+                                  <td>{d.descuento_pct.toFixed(1)}%</td>
+                                  <td>{d.precio_neto_unitario.toFixed(2)}</td>
+                                  <td>{d.subtotal_linea.toFixed(2)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        ) : (
+                          <span className="portal-muted">Este pedido no tiene líneas de detalle.</span>
+                        )}
+                      </td>
+                    </tr>
+                  )}
+                </>
               ))}
             </tbody>
           </table>

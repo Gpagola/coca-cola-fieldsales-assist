@@ -1,35 +1,46 @@
 import { useState, useEffect, useLayoutEffect, useRef } from "react"
 import { createPortal } from "react-dom"
+import PoliticasDescuentoEditor from "./PoliticasDescuentoEditor"
 import "./AdminPanel.css"
 
 const API = import.meta.env.VITE_API_URL || "/api"
 
+// Pseudo-tab: no es una fila de la tabla `ontologias`, es una tabla estructurada
+// (politicas_descuento) con su propio editor y su propio CRUD REST.
+const POLITICAS_TAB = "politicas-descuento"
+
 const LABELS = {
   "system-prompt":             "Prompt",
   "ontologia-procedimientos":  "Procedimientos",
+  "ontologia-descuentos":      "Descuentos (guía)",
   "ontologia-faq":             "FAQ",
-  "autopilot-cliente":         "Cliente",
+  [POLITICAS_TAB]:             "Políticas de descuento",
+  "autopilot-cliente":         "Vendedor",
   "autopilot-evaluador":       "Evaluador",
 }
 
 const TAB_ORDER = [
-  "system-prompt", "ontologia-procedimientos", "ontologia-faq",
+  "system-prompt", "ontologia-procedimientos", "ontologia-descuentos", "ontologia-faq", POLITICAS_TAB,
   "_sep_",
   "autopilot-cliente", "autopilot-evaluador",
 ]
 
 const TOOLTIPS = {
-  "system-prompt":             "Prompt del sistema: define la personalidad, tono y comportamiento general del asistente SA de atención al cliente. Es la base sobre la que se construyen todas las respuestas. Edítalo para ajustar cómo se presenta el asistente, su nivel de empatía y su enfoque al resolver consultas.",
-  "ontologia-procedimientos":  "Procedimientos de atención: contiene los pasos a seguir para cada tipo de gestión (estado de pedido, devoluciones, retrasos de envío, cancelaciones, producto defectuoso, quejas). Aquí se definen los flujos y requisitos de información para resolver cada caso.",
-  "ontologia-faq":             "Preguntas frecuentes (FAQ): describe las políticas y el funcionamiento de la tienda (envíos, devoluciones, pagos, programa de fidelidad, tiendas físicas). El asistente usa esta información para responder preguntas generales del cliente.",
-  "autopilot-cliente":         "Prompt del cliente simulado: define cómo se comporta el cliente IA en las pruebas automáticas (auto-test). Controla su personalidad, paciencia y variedad de consultas para estresar las ontologías de forma efectiva.",
-  "autopilot-evaluador":       "Prompt del evaluador: define los criterios con los que el agente evaluador analiza cada conversación. Determina cómo se puntúan las tres ontologías (prompt, procedimientos, FAQ) y qué tipo de recomendaciones genera para optimizarlas.",
+  "system-prompt":             "Prompt del sistema: define la personalidad, tono y comportamiento general del asistente de venta en terreno. Es la base sobre la que se construyen todas las respuestas.",
+  "ontologia-procedimientos":  "Procedimientos por canal: contiene las reglas de negociación para cada canal (tradicional, moderno, on/off premise, mayoristas, e-commerce, institucional/Horeca, vending) y la distinción directo/indirecto.",
+  "ontologia-descuentos":      "Explicación narrativa de la lógica de descuentos (para que el asistente entienda el criterio general). El número exacto SIEMPRE sale de la tabla de Políticas de descuento, no de este texto.",
+  "ontologia-faq":             "Preguntas frecuentes de un vendedor en terreno: objeciones de precio, condiciones de pago, logística directa/indirecta, SKUs no catalogados, aprobación de pedidos.",
+  [POLITICAS_TAB]:             "Tabla real de políticas de descuento (canal + volumen + condición de pago + tamaño de canal → % de descuento). Es la fuente de verdad que consulta el asistente — editar acá cambia el descuento aplicado inmediatamente, sin reiniciar nada.",
+  "autopilot-cliente":         "Prompt del vendedor simulado: define cómo se comporta el vendedor IA en las pruebas automáticas (auto-test). Controla su personalidad y variedad de consultas para estresar las ontologías de forma efectiva.",
+  "autopilot-evaluador":       "Prompt del evaluador: define los criterios con los que el agente evaluador analiza cada conversación y puntúa las ontologías.",
 }
 
 const TAB_COLORS = {
   "system-prompt":             "tab-system",
   "ontologia-procedimientos":  "tab-reglas",
+  "ontologia-descuentos":      "tab-reglas",
   "ontologia-faq":             "tab-diferenciadores",
+  [POLITICAS_TAB]:             "tab-diferenciadores",
   "autopilot-cliente":         "tab-autopilot",
   "autopilot-evaluador":       "tab-autopilot",
 }
@@ -209,13 +220,22 @@ export default function AdminPanel({ onSaved, width }) {
   }, [])
 
   function handleSelect(nombre) {
-    const item = ontologias.find(o => o.nombre === nombre)
     setSelected(nombre)
+    if (nombre === POLITICAS_TAB) {
+      setContenido("")
+      setDirty(false)
+      setSearchQuery("")
+      setMatchIndex(0)
+      return
+    }
+    const item = ontologias.find(o => o.nombre === nombre)
     setContenido(item?.contenido || "")
     setDirty(false)
     setSearchQuery("")
     setMatchIndex(0)
   }
+
+  const esPoliticasTab = selected === POLITICAS_TAB
 
   function handleChange(e) {
     setContenido(e.target.value)
@@ -254,6 +274,13 @@ export default function AdminPanel({ onSaved, width }) {
                 {LABELS[o.nombre] || o.nombre}
               </button>
             ))}
+            <button
+              className={`admin-pill ${TAB_COLORS[POLITICAS_TAB]} ${esPoliticasTab ? "active" : ""}`}
+              onClick={() => handleSelect(POLITICAS_TAB)}
+              title={TOOLTIPS[POLITICAS_TAB]}
+            >
+              {LABELS[POLITICAS_TAB]}
+            </button>
           </div>
         </div>
         <div className="admin-tab-col">
@@ -274,25 +301,29 @@ export default function AdminPanel({ onSaved, width }) {
       </div>
 
       <div className="admin-editor">
-        <div className="editor-wrap">
-          {/* Highlight layer — detrás del textarea */}
-          <div
-            ref={hlRef}
-            className="highlight-layer"
-            dangerouslySetInnerHTML={{ __html: buildHighlightHtml(contenido, searchQuery, matchIndex, matches) }}
-          />
-          {/* Textarea editable — encima, fondo transparente cuando hay búsqueda activa */}
-          <textarea
-            ref={textareaRef}
-            className={`admin-textarea ${searchOpen ? "search-active" : ""}`}
-            value={contenido}
-            onChange={handleChange}
-            spellCheck={false}
-          />
-        </div>
+        {esPoliticasTab ? (
+          <PoliticasDescuentoEditor />
+        ) : (
+          <div className="editor-wrap">
+            {/* Highlight layer — detrás del textarea */}
+            <div
+              ref={hlRef}
+              className="highlight-layer"
+              dangerouslySetInnerHTML={{ __html: buildHighlightHtml(contenido, searchQuery, matchIndex, matches) }}
+            />
+            {/* Textarea editable — encima, fondo transparente cuando hay búsqueda activa */}
+            <textarea
+              ref={textareaRef}
+              className={`admin-textarea ${searchOpen ? "search-active" : ""}`}
+              value={contenido}
+              onChange={handleChange}
+              spellCheck={false}
+            />
+          </div>
+        )}
       </div>
 
-      {searchOpen && (
+      {!esPoliticasTab && searchOpen && (
         <div className="search-bar">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
             <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
@@ -320,23 +351,26 @@ export default function AdminPanel({ onSaved, width }) {
       )}
 
       <div className="admin-footer">
-        <button className="save-btn" onClick={handleSave} disabled={saving || !dirty} title="Guardar los cambios realizados en esta ontología. Se crea una nueva versión activa que el asistente SA usará inmediatamente en las próximas conversaciones y pruebas.">
-          {saving ? "Guardando..." : "Guardar"}
-        </button>
-        {dirty && <span className="unsaved">Sin guardar</span>}
-        <button
-          className={`search-toggle ${searchOpen ? "active" : ""}`}
-          onClick={toggleSearch}
-          title="Buscar texto dentro del contenido de la ontología. Útil para localizar procedimientos específicos, respuestas de FAQ o secciones que necesitan ajuste tras una evaluación."
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
-            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-          </svg>
-        </button>
+        {!esPoliticasTab && (<>
+          <button className="save-btn" onClick={handleSave} disabled={saving || !dirty} title="Guardar los cambios realizados en esta ontología. Se crea una nueva versión activa que el asistente usará inmediatamente en las próximas conversaciones y pruebas.">
+            {saving ? "Guardando..." : "Guardar"}
+          </button>
+          {dirty && <span className="unsaved">Sin guardar</span>}
+          <button
+            className={`search-toggle ${searchOpen ? "active" : ""}`}
+            onClick={toggleSearch}
+            title="Buscar texto dentro del contenido de la ontología. Útil para localizar procedimientos específicos, respuestas de FAQ o secciones que necesitan ajuste tras una evaluación."
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+          </button>
+        </>)}
+        {esPoliticasTab && <span className="unsaved" style={{ fontStyle: "italic" }}>Cada fila se guarda de forma independiente</span>}
         <button
           className="expand-toggle"
           onClick={() => setExpanded(true)}
-          title="Ampliar el editor a pantalla completa para editar la ontología con más espacio. Especialmente útil para ontologías extensas como los procedimientos de atención al cliente."
+          title="Ampliar el editor a pantalla completa. Especialmente útil para ontologías extensas o para ver la tabla de políticas de descuento completa."
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/>
@@ -350,7 +384,7 @@ export default function AdminPanel({ onSaved, width }) {
           <div className="admin-expand-modal">
             <div className="admin-expand-body">
               <div className="admin-expand-sidebar">
-                <span className="sidebar-title">Smart Assist → Guiado por Ontologías</span>
+                <span className="sidebar-title">Coca-Cola Field Sales → Guiado por Ontologías</span>
               </div>
               <div className="admin-expand-main">
                 <div className="admin-expand-header">
@@ -368,6 +402,13 @@ export default function AdminPanel({ onSaved, width }) {
                             {LABELS[o.nombre] || o.nombre}
                           </button>
                         ))}
+                        <button
+                          className={`admin-pill ${TAB_COLORS[POLITICAS_TAB]} ${esPoliticasTab ? "active" : ""}`}
+                          onClick={() => handleSelect(POLITICAS_TAB)}
+                          title={TOOLTIPS[POLITICAS_TAB]}
+                        >
+                          {LABELS[POLITICAS_TAB]}
+                        </button>
                       </div>
                     </div>
                     <div className="admin-tab-col">
@@ -393,22 +434,26 @@ export default function AdminPanel({ onSaved, width }) {
                   </button>
                 </div>
                 <div className="admin-expand-editor">
-                  <div className="editor-wrap">
-                    <div
-                      ref={hlRef}
-                      className="highlight-layer"
-                      dangerouslySetInnerHTML={{ __html: buildHighlightHtml(contenido, searchQuery, matchIndex, matches) }}
-                    />
-                    <textarea
-                      ref={textareaRef}
-                      className={`admin-textarea ${searchOpen ? "search-active" : ""}`}
-                      value={contenido}
-                      onChange={handleChange}
-                      spellCheck={false}
-                    />
-                  </div>
+                  {esPoliticasTab ? (
+                    <PoliticasDescuentoEditor />
+                  ) : (
+                    <div className="editor-wrap">
+                      <div
+                        ref={hlRef}
+                        className="highlight-layer"
+                        dangerouslySetInnerHTML={{ __html: buildHighlightHtml(contenido, searchQuery, matchIndex, matches) }}
+                      />
+                      <textarea
+                        ref={textareaRef}
+                        className={`admin-textarea ${searchOpen ? "search-active" : ""}`}
+                        value={contenido}
+                        onChange={handleChange}
+                        spellCheck={false}
+                      />
+                    </div>
+                  )}
                 </div>
-                {searchOpen && (
+                {!esPoliticasTab && searchOpen && (
                   <div className="search-bar">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
                       <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
@@ -435,19 +480,22 @@ export default function AdminPanel({ onSaved, width }) {
                   </div>
                 )}
                 <div className="admin-expand-footer">
-                  <button className="save-btn" onClick={handleSave} disabled={saving || !dirty} title="Guardar los cambios realizados en esta ontología. Se crea una nueva versión activa que el asistente SA usará inmediatamente en las próximas conversaciones y pruebas.">
-                    {saving ? "Guardando..." : "Guardar"}
-                  </button>
-                  {dirty && <span className="unsaved">Sin guardar</span>}
-                  <button
-                    className={`search-toggle ${searchOpen ? "active" : ""}`}
-                    onClick={toggleSearch}
-                    title="Buscar texto dentro del contenido de la ontología. Útil para localizar procedimientos específicos, respuestas de FAQ o secciones que necesitan ajuste tras una evaluación."
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
-                      <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-                    </svg>
-                  </button>
+                  {!esPoliticasTab && (<>
+                    <button className="save-btn" onClick={handleSave} disabled={saving || !dirty} title="Guardar los cambios realizados en esta ontología. Se crea una nueva versión activa que el asistente usará inmediatamente en las próximas conversaciones y pruebas.">
+                      {saving ? "Guardando..." : "Guardar"}
+                    </button>
+                    {dirty && <span className="unsaved">Sin guardar</span>}
+                    <button
+                      className={`search-toggle ${searchOpen ? "active" : ""}`}
+                      onClick={toggleSearch}
+                      title="Buscar texto dentro del contenido de la ontología. Útil para localizar procedimientos específicos, respuestas de FAQ o secciones que necesitan ajuste tras una evaluación."
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+                        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                      </svg>
+                    </button>
+                  </>)}
+                  {esPoliticasTab && <span className="unsaved" style={{ fontStyle: "italic" }}>Cada fila se guarda de forma independiente</span>}
                   <button
                     className="expand-toggle"
                     onClick={() => setExpanded(false)}

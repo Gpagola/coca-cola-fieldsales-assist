@@ -205,3 +205,39 @@
   color: var(--bg-panel);
   border-color: var(--text);
 }
+
+/* ── Filas expandibles con detalle de pedido ── */
+.portal-row-expandible { cursor: pointer; }
+
+.portal-expand-toggle {
+  width: 18px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.portal-detail-row td {
+  background: var(--bg-input);
+  padding: 10px 14px 14px 40px;
+}
+
+.portal-detail-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.portal-detail-table thead th {
+  text-align: left;
+  padding: 4px 10px;
+  font-size: 9px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+}
+
+.portal-detail-table tbody td {
+  padding: 5px 10px;
+  color: var(--text);
+}
