@@ -335,32 +335,48 @@ Evalua esta conversacion de un vendedor con el asistente de venta en terreno."""
             ],
         )
         if use_max_completion_tokens:
-            kwargs["max_completion_tokens"] = 1200
+            # Modelo de razonamiento: max_completion_tokens incluye tokens de razonamiento
+            # ocultos ademas del JSON visible, por eso el presupuesto es mucho mayor que
+            # para un modelo no-razonador (evita respuestas truncadas/JSON invalido).
+            kwargs["max_completion_tokens"] = 4000
         else:
             kwargs["max_tokens"] = 1200
             kwargs["temperature"] = 0.2
         return client.chat.completions.create(**kwargs)
 
-    # Intentar con gpt-5.4, fallback a gpt-4o si falla o devuelve vacio
-    raw = ""
+    def _parsear(raw: str):
+        """Intenta parsear el JSON devuelto. Devuelve el dict o None si no es valido."""
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError:
+            import re
+            m = re.search(r'\{.*\}', raw, re.DOTALL)
+            if m:
+                try:
+                    return json.loads(m.group())
+                except json.JSONDecodeError:
+                    return None
+            return None
+
+    # Intentar con gpt-5.4, fallback a gpt-4o. Solo se acepta un intento si su JSON
+    # realmente parsea — un modelo con salida truncada/invalida no debe bloquear el
+    # fallback al siguiente (bug previo: se aceptaba el primer `raw` no vacio aunque
+    # el JSON estuviera roto, y nunca se probaba gpt-4o).
+    last_raw = ""
     for model, use_mct in [("gpt-5.4", True), ("gpt-4o", False)]:
         try:
             response = _llamar_evaluador(model, use_mct)
             raw = (response.choices[0].message.content or "").strip()
             print(f"[evaluador] model={model} raw_len={len(raw)} raw_preview={raw[:120]!r}")
-            if raw:
-                break
+            if not raw:
+                continue
+            last_raw = raw
+            parsed = _parsear(raw)
+            if parsed is not None:
+                return parsed
         except Exception as e:
             print(f"[evaluador] model={model} error: {e}")
 
-    if not raw:
+    if not last_raw:
         return {"error": "No se pudo obtener evaluacion", "raw": ""}
-
-    try:
-        return json.loads(raw)
-    except json.JSONDecodeError:
-        import re
-        m = re.search(r'\{.*\}', raw, re.DOTALL)
-        if m:
-            return json.loads(m.group())
-        return {"error": "No se pudo parsear la evaluacion", "raw": raw}
+    return {"error": "No se pudo parsear la evaluacion", "raw": last_raw}
