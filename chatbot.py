@@ -260,48 +260,73 @@ def _historico_pedidos_texto(cur, empresa: dict, limite: int = 5) -> str:
 
 
 @tool
-def consultar_cuenta_cliente(codigo_cliente: str) -> str:
-    """Busca una cuenta (empresa cliente) por su codigo (formato CLI-XXXX) o, si no hay match
-    exacto, por nombre comercial parcial. Devuelve el perfil de la cuenta: canal, tipo de
-    distribucion (directo/indirecto), tamano de canal, ciudad/zona, condicion de pago habitual
-    y vendedor asignado. NO incluye historico de pedidos — para eso usa
-    `consultar_historico_pedidos`. Usar siempre al inicio de la conversacion para identificar
-    la cuenta con la que se va a trabajar."""
-    q = codigo_cliente.strip()
-    if not q:
-        return "El codigo de cliente esta vacio. Pide al vendedor el codigo de cuenta (formato CLI-XXXX)."
+def consultar_cuenta_cliente(codigo_cliente: str = "", nombre_comercial: str = "") -> str:
+    """Busca una cuenta (empresa cliente). Pasa el codigo (formato CLI-XXXX) si lo tenes, el
+    nombre comercial si lo tenes, o AMBOS si el vendedor menciono los dos (por ejemplo, si dio
+    un codigo que resulto no existir pero tambien dijo el nombre del negocio, o viceversa — pasa
+    los dos datos juntos para que la busqueda los combine).
+
+    Si hay un match exacto de codigo, devuelve directamente la ficha de la cuenta: canal, tipo
+    de distribucion (directo/indirecto), tamano de canal, ciudad/zona, condicion de pago
+    habitual y vendedor asignado. NO incluye historico de pedidos — para eso usa
+    `consultar_historico_pedidos`.
+
+    Si no hay match exacto, busca por aproximacion (codigo parcial, nombre comercial o razon
+    social) y devuelve una lista de cuentas candidatas para que le muestres al vendedor y
+    confirme cual es — nunca elijas una por tu cuenta ni inventes un codigo.
+
+    Usar siempre al inicio de la conversacion para identificar la cuenta con la que se va a
+    trabajar."""
+    codigo = codigo_cliente.strip().upper()
+    nombre = nombre_comercial.strip()
+
+    if not codigo and not nombre:
+        return "No se dio codigo ni nombre de cuenta. Pide al vendedor el codigo (formato CLI-XXXX) o el nombre comercial del negocio."
 
     conn = get_conn()
     try:
         cur = conn.cursor()
-        empresa = _fetch_empresa(cur, q.upper())
+
+        empresa = _fetch_empresa(cur, codigo) if codigo else None
 
         if not empresa:
-            like = f"%{q}%"
-            cur.execute("""
-                SELECT codigo_cliente, nombre_comercial, canal, ciudad
+            condiciones = []
+            params = []
+            if codigo:
+                condiciones.append("codigo_cliente LIKE %s")
+                params.append(f"%{codigo}%")
+            if nombre:
+                condiciones.append("nombre_comercial LIKE %s")
+                params.append(f"%{nombre}%")
+                condiciones.append("razon_social LIKE %s")
+                params.append(f"%{nombre}%")
+
+            cur.execute(f"""
+                SELECT codigo_cliente, nombre_comercial, canal, tamano_canal, ciudad
                 FROM empresas_clientes
-                WHERE nombre_comercial LIKE %s
+                WHERE {" OR ".join(condiciones)}
                 ORDER BY nombre_comercial
                 LIMIT 10
-            """, (like,))
+            """, params)
             rows = cur.fetchall()
             cur.close()
 
+            dato_buscado = " y ".join(filter(None, [f"codigo '{codigo}'" if codigo else "", f"nombre '{nombre}'" if nombre else ""]))
+
             if not rows:
-                return f"No se encontro ninguna cuenta con codigo o nombre '{q}'. Verifica el dato con el vendedor."
+                return f"No se encontro ninguna cuenta que coincida con {dato_buscado}. Verifica el dato con el vendedor."
             if len(rows) == 1:
                 empresa = _volver_a_buscar(rows[0][0])
             else:
-                out = [f"Se encontraron {len(rows)} cuentas que coinciden con '{q}'. Pide al vendedor que confirme el codigo exacto:"]
-                for codigo, nombre, canal, ciudad in rows:
-                    out.append(f"- {codigo} | {nombre} | canal: {canal} | {ciudad or 'sin ciudad'}")
+                out = [f"Se encontraron {len(rows)} cuentas que coinciden con {dato_buscado}. Mostrale esta lista al vendedor y pedile que confirme el codigo exacto:"]
+                for cod, nom, canal, tamano, ciudad in rows:
+                    out.append(f"- {cod} | {nom} | canal: {canal} | tamano: {tamano} | {ciudad or 'sin ciudad'}")
                 return "\n".join(out)
         else:
             cur.close()
 
         if not empresa:
-            return f"No se encontro ninguna cuenta con codigo o nombre '{q}'."
+            return f"No se encontro ninguna cuenta con codigo '{codigo}'."
 
         if not empresa["activo"]:
             return f"La cuenta {empresa['codigo_cliente']} ({empresa['nombre_comercial']}) figura como INACTIVA. Verifica con tu supervisor antes de continuar."
