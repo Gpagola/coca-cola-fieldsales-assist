@@ -81,7 +81,7 @@ export default function App() {
   const showAdmin = activeTab === "lab" || activeTab === "test"
   const adminVisible = showAdmin && !adminCollapsed
 
-  const TAB_TITLES = { portal: "Mi cartera", lab: "Auto-test", test: "Manual-test", user: "User-test" }
+  const TAB_TITLES = { portal: "BBDD", lab: "Auto-test", test: "Manual-test", user: "User-test" }
 
   return (
     <div className="app">
@@ -123,9 +123,9 @@ export default function App() {
               <button
                 className={`center-nav-item ${activeTab === "portal" ? "active" : ""}`}
                 onClick={() => { setActiveTab("portal") }}
-                title="Mi cartera: consulta las cuentas asignadas, los pedidos en curso y las gestiones de posventa, e inicia una conversación con el asistente ya con la cuenta identificada."
+                title="BBDD: consulta las cuentas asignadas, los pedidos en curso y las gestiones de posventa, e inicia una conversación con el asistente ya con la cuenta identificada."
               >
-                Mi cartera
+                BBDD
               </button>
               <button
                 className={`center-nav-item ${activeTab === "lab" ? "active" : ""}`}
