@@ -177,26 +177,67 @@ random.seed(42)
 
 PRODUCTOS_MOCK = [
     # codigo_sku, nombre, categoria, presentacion_tipo, formato, litros, precio_lista, descripcion
-    ("CC-355-RET",  "Coca-Cola Original",        "gaseosas",     "retornable",    "botella 355ml",  0.355, 450.00, "Gaseosa cola clasica, botella retornable de vidrio."),
-    ("CC-500-NR",   "Coca-Cola Original",        "gaseosas",     "no_retornable", "botella 500ml",  0.500, 620.00, "Gaseosa cola clasica, botella PET individual."),
-    ("CC-1500-NR",  "Coca-Cola Original",        "gaseosas",     "no_retornable", "botella 1.5L",   1.500, 1150.00, "Gaseosa cola clasica, formato familiar PET."),
-    ("CC-2250-RET", "Coca-Cola Original",        "gaseosas",     "retornable",    "botella 2.25L",  2.250, 1400.00, "Gaseosa cola clasica, formato hogar retornable."),
-    ("CCZ-500-NR",  "Coca-Cola Zero",            "gaseosas",     "no_retornable", "botella 500ml",  0.500, 620.00, "Gaseosa cola sin azucar, botella PET individual."),
-    ("CCZ-1500-NR", "Coca-Cola Zero",            "gaseosas",     "no_retornable", "botella 1.5L",   1.500, 1150.00, "Gaseosa cola sin azucar, formato familiar PET."),
-    ("SPR-500-NR",  "Sprite",                    "gaseosas",     "no_retornable", "botella 500ml",  0.500, 600.00, "Gaseosa lima-limon, botella PET individual."),
-    ("SPR-1500-NR", "Sprite",                    "gaseosas",     "no_retornable", "botella 1.5L",   1.500, 1120.00, "Gaseosa lima-limon, formato familiar PET."),
-    ("FAN-500-NR",  "Fanta Naranja",              "gaseosas",     "no_retornable", "botella 500ml",  0.500, 600.00, "Gaseosa sabor naranja, botella PET individual."),
-    ("FAN-1500-NR", "Fanta Naranja",              "gaseosas",     "no_retornable", "botella 1.5L",   1.500, 1120.00, "Gaseosa sabor naranja, formato familiar PET."),
-    ("LAT-354-CJ",  "Coca-Cola Original Lata",    "gaseosas",     "no_retornable", "lata 354ml x24",  8.496, 9800.00, "Pack de 24 latas, formato para on premise / vending."),
-    ("AGB-500-NR",  "Villa Cristal Agua sin gas", "aguas",        "no_retornable", "botella 500ml",  0.500, 380.00, "Agua mineral sin gas, botella individual."),
-    ("AGC-500-NR",  "Villa Cristal Agua con gas", "aguas",        "no_retornable", "botella 500ml",  0.500, 400.00, "Agua mineral con gas, botella individual."),
-    ("AGB-2000-NR", "Villa Cristal Agua sin gas", "aguas",        "no_retornable", "bidon 2L",       2.000, 950.00, "Agua mineral sin gas, formato familiar."),
-    ("SAB-500-NR",  "Quatro Pomelo",              "saborizadas",  "no_retornable", "botella 500ml",  0.500, 580.00, "Bebida saborizada citrica, botella individual."),
-    ("SAB-1500-NR", "Quatro Pomelo",              "saborizadas",  "no_retornable", "botella 1.5L",   1.500, 1080.00, "Bebida saborizada citrica, formato familiar."),
-    ("JUG-200-NR",  "Cepita Naranja",             "jugos",        "no_retornable", "botella 200ml",  0.200, 350.00, "Jugo de naranja, formato individual."),
-    ("JUG-1000-NR", "Cepita Naranja",             "jugos",        "no_retornable", "botella 1L",     1.000, 980.00, "Jugo de naranja, formato familiar."),
-    ("ISO-500-NR",  "Aquarius Isotonica",         "isotonicas",   "no_retornable", "botella 500ml",  0.500, 650.00, "Bebida isotonica, botella individual."),
-    ("ENE-473-NR",  "Monster Energy",             "energizantes", "no_retornable", "lata 473ml",     0.473, 1350.00, "Bebida energizante, lata individual."),
+    # ── Coca-Cola (gaseosas) ─────────────────────────────────────────────────
+    ("CC-354-NR",   "Coca-Cola Original",        "gaseosas",    "no_retornable", "lata 354ml",     0.354, 480.00,  "Gaseosa cola clasica, lata individual."),
+    ("CC-500-NR",   "Coca-Cola Original",        "gaseosas",    "no_retornable", "botella 500ml",  0.500, 620.00,  "Gaseosa cola clasica, botella PET individual."),
+    ("CC-1250-NR",  "Coca-Cola Original",        "gaseosas",    "no_retornable", "botella 1.25L",  1.250, 980.00,  "Gaseosa cola clasica, formato mediano PET."),
+    ("CC-1500-NR",  "Coca-Cola Original",        "gaseosas",    "no_retornable", "botella 1.5L",   1.500, 1150.00, "Gaseosa cola clasica, formato familiar PET."),
+    ("CC-2250-RET", "Coca-Cola Original",        "gaseosas",    "retornable",    "botella 2.25L",  2.250, 1400.00, "Gaseosa cola clasica, formato hogar retornable."),
+    ("CC-3000-NR",  "Coca-Cola Original",        "gaseosas",    "no_retornable", "botella 3L",     3.000, 1750.00, "Gaseosa cola clasica, formato familiar grande PET."),
+    ("CC-354-CJ24", "Coca-Cola Original",        "gaseosas",    "no_retornable", "lata 354ml x24", 8.496, 9800.00, "Pack de 24 latas, formato para on premise / vending."),
+    ("CCZ-354-NR",  "Coca-Cola Zero",            "gaseosas",    "no_retornable", "lata 354ml",     0.354, 480.00,  "Gaseosa cola sin azucar, lata individual."),
+    ("CCZ-500-NR",  "Coca-Cola Zero",            "gaseosas",    "no_retornable", "botella 500ml",  0.500, 620.00,  "Gaseosa cola sin azucar, botella PET individual."),
+    ("CCZ-1500-NR", "Coca-Cola Zero",            "gaseosas",    "no_retornable", "botella 1.5L",   1.500, 1150.00, "Gaseosa cola sin azucar, formato familiar PET."),
+    ("CCL-500-NR",  "Coca-Cola Sin Azucar",       "gaseosas",    "no_retornable", "botella 500ml",  0.500, 620.00,  "Gaseosa cola linea Sin Azucar, botella PET individual."),
+    ("CCL-1500-NR", "Coca-Cola Sin Azucar",       "gaseosas",    "no_retornable", "botella 1.5L",   1.500, 1150.00, "Gaseosa cola linea Sin Azucar, formato familiar PET."),
+    ("SPR-354-NR",  "Sprite",                    "gaseosas",    "no_retornable", "lata 354ml",     0.354, 460.00,  "Gaseosa lima-limon, lata individual."),
+    ("SPR-500-NR",  "Sprite",                    "gaseosas",    "no_retornable", "botella 500ml",  0.500, 600.00,  "Gaseosa lima-limon, botella PET individual."),
+    ("SPR-1500-NR", "Sprite",                    "gaseosas",    "no_retornable", "botella 1.5L",   1.500, 1120.00, "Gaseosa lima-limon, formato familiar PET."),
+    ("FAN-354-NR",  "Fanta Naranja",             "gaseosas",    "no_retornable", "lata 354ml",     0.354, 460.00,  "Gaseosa sabor naranja, lata individual."),
+    ("FAN-500-NR",  "Fanta Naranja",             "gaseosas",    "no_retornable", "botella 500ml",  0.500, 600.00,  "Gaseosa sabor naranja, botella PET individual."),
+    ("FAN-1500-NR", "Fanta Naranja",             "gaseosas",    "no_retornable", "botella 1.5L",   1.500, 1120.00, "Gaseosa sabor naranja, formato familiar PET."),
+    ("SCT-500-NR",  "Schweppes Tonica",          "gaseosas",    "no_retornable", "botella 500ml",  0.500, 650.00,  "Gaseosa tonica, botella PET individual, ideal on premise."),
+    ("SCT-1500-NR", "Schweppes Tonica",          "gaseosas",    "no_retornable", "botella 1.5L",   1.500, 1200.00, "Gaseosa tonica, formato familiar PET."),
+    ("SCP-500-NR",  "Schweppes Pomelo",          "gaseosas",    "no_retornable", "botella 500ml",  0.500, 650.00,  "Gaseosa sabor pomelo, botella PET individual."),
+    ("SCP-1500-NR", "Schweppes Pomelo",          "gaseosas",    "no_retornable", "botella 1.5L",   1.500, 1200.00, "Gaseosa sabor pomelo, formato familiar PET."),
+    ("SCG-500-NR",  "Schweppes Ginger Ale",      "gaseosas",    "no_retornable", "botella 500ml",  0.500, 650.00,  "Gaseosa ginger ale, botella PET individual, ideal on premise."),
+    ("SCG-1500-NR", "Schweppes Ginger Ale",      "gaseosas",    "no_retornable", "botella 1.5L",   1.500, 1200.00, "Gaseosa ginger ale, formato familiar PET."),
+    # ── Aguas ────────────────────────────────────────────────────────────────
+    ("KINSG-500-NR", "Kin Agua Mineral Sin Gas", "aguas",       "no_retornable", "botella 500ml",  0.500, 380.00,  "Agua mineral natural sin gas, botella individual."),
+    ("KINSG-1500-NR","Kin Agua Mineral Sin Gas", "aguas",       "no_retornable", "botella 1.5L",   1.500, 680.00,  "Agua mineral natural sin gas, formato familiar."),
+    ("KINSG-6000-NR","Kin Agua Mineral Sin Gas", "aguas",       "no_retornable", "bidon 6L",       6.000, 1450.00, "Agua mineral natural sin gas, bidon para oficina/hogar."),
+    ("KINCG-500-NR", "Kin Agua Mineral Con Gas", "aguas",       "no_retornable", "botella 500ml",  0.500, 400.00,  "Agua mineral natural con gas, botella individual."),
+    ("TOPO-355-NR",  "Topo Chico Agua Mineral",  "aguas",       "no_retornable", "botella 355ml",  0.355, 550.00,  "Agua mineral con gas premium, botella individual, ideal on premise."),
+    # ── Jugos: Cepita / Del Valle ────────────────────────────────────────────
+    ("CEPN-200-NR",  "Cepita Naranja",           "jugos",       "no_retornable", "botella 200ml",  0.200, 350.00,  "Jugo de naranja, formato individual."),
+    ("CEPN-1000-NR", "Cepita Naranja",           "jugos",       "no_retornable", "botella 1L",     1.000, 980.00,  "Jugo de naranja, formato familiar."),
+    ("CEPM-200-NR",  "Cepita Manzana",           "jugos",       "no_retornable", "botella 200ml",  0.200, 350.00,  "Jugo de manzana, formato individual."),
+    ("CEPM-1000-NR", "Cepita Manzana",           "jugos",       "no_retornable", "botella 1L",     1.000, 980.00,  "Jugo de manzana, formato familiar."),
+    ("CEPMF-200-NR", "Cepita Multifruta",        "jugos",       "no_retornable", "botella 200ml",  0.200, 350.00,  "Jugo multifruta, formato individual."),
+    ("CEPMF-1000-NR","Cepita Multifruta",        "jugos",       "no_retornable", "botella 1L",     1.000, 980.00,  "Jugo multifruta, formato familiar."),
+    ("CEPPR-200-NR", "Cepita Pomelo Rosado",     "jugos",       "no_retornable", "botella 200ml",  0.200, 360.00,  "Jugo de pomelo rosado, formato individual."),
+    ("CEPPREM-1000-NR","Cepita Premium 100% Naranja","jugos",   "no_retornable", "botella 1L",     1.000, 1150.00, "Jugo 100% exprimido, sin agregado de azucar, formato familiar."),
+    ("CEPLIG-1000-NR","Cepita Naranja Light",    "jugos",       "no_retornable", "botella 1L",     1.000, 980.00,  "Jugo de naranja linea light, formato familiar."),
+    ("DVDUR-1000-NR","Del Valle Durazno",        "jugos",       "no_retornable", "botella 1L",     1.000, 1050.00, "Nectar de durazno de la linea Del Valle, formato familiar."),
+    # ── Saborizadas: Aquarius by Cepita ──────────────────────────────────────
+    ("AQM-500-NR",   "Aquarius by Cepita Manzana","saborizadas","no_retornable", "botella 500ml",  0.500, 650.00,  "Agua saborizada de manzana, botella individual."),
+    ("AQM-1500-NR",  "Aquarius by Cepita Manzana","saborizadas","no_retornable", "botella 1.5L",   1.500, 1180.00, "Agua saborizada de manzana, formato familiar."),
+    ("AQP-500-NR",   "Aquarius by Cepita Pera",  "saborizadas", "no_retornable", "botella 500ml",  0.500, 650.00,  "Agua saborizada de pera, botella individual."),
+    ("AQPOM-500-NR", "Aquarius by Cepita Pomelo","saborizadas", "no_retornable", "botella 500ml",  0.500, 650.00,  "Agua saborizada de pomelo, botella individual."),
+    # ── Isotonicas: Powerade ─────────────────────────────────────────────────
+    ("POWMB-500-NR", "Powerade Mountain Blast",  "isotonicas",  "no_retornable", "botella 500ml",  0.500, 680.00,  "Bebida isotonica sabor frutos azules, botella individual."),
+    ("POWMB-1000-NR","Powerade Mountain Blast",  "isotonicas",  "no_retornable", "botella 1L",      1.000, 1200.00, "Bebida isotonica sabor frutos azules, formato familiar."),
+    ("POWFT-500-NR", "Powerade Frutas Tropicales","isotonicas", "no_retornable", "botella 500ml",  0.500, 680.00,  "Bebida isotonica sabor frutas tropicales, botella individual."),
+    # ── Te: Fuze Tea ─────────────────────────────────────────────────────────
+    ("FUZL-500-NR",  "Fuze Tea Limon",           "tes",         "no_retornable", "botella 500ml",  0.500, 630.00,  "Te con extracto de te negro y sabor limon, botella individual."),
+    ("FUZL-1500-NR", "Fuze Tea Limon",           "tes",         "no_retornable", "botella 1.5L",   1.500, 1150.00, "Te con extracto de te negro y sabor limon, formato familiar."),
+    ("FUZD-500-NR",  "Fuze Tea Durazno",         "tes",         "no_retornable", "botella 500ml",  0.500, 630.00,  "Te con extracto de te negro y sabor durazno, botella individual."),
+    ("FUZD-1500-NR", "Fuze Tea Durazno",         "tes",         "no_retornable", "botella 1.5L",   1.500, 1150.00, "Te con extracto de te negro y sabor durazno, formato familiar."),
+    # ── Plant-based: AdeS ────────────────────────────────────────────────────
+    ("ADESO-200-NR", "AdeS Original",            "plant_based", "no_retornable", "botella 200ml",  0.200, 380.00,  "Bebida a base de soja, sabor original, formato individual."),
+    ("ADESO-1000-NR","AdeS Original",            "plant_based", "no_retornable", "botella 1L",     1.000, 1050.00, "Bebida a base de soja, sabor original, formato familiar."),
+    ("ADESCH-200-NR","AdeS Chocolate",           "plant_based", "no_retornable", "botella 200ml",  0.200, 400.00,  "Bebida a base de soja, sabor chocolate, formato individual."),
+    ("ADESV-200-NR", "AdeS Vainilla",            "plant_based", "no_retornable", "botella 200ml",  0.200, 400.00,  "Bebida a base de soja, sabor vainilla, formato individual."),
 ]
 
 # ── Datos mock: empresas cliente (cuentas B2B por canal) ────────────────────
@@ -283,33 +324,53 @@ EMPRESAS_CLIENTES_MOCK = _gen_empresas_clientes(36)
 # ── Motor de politicas de descuento (curado a mano) ─────────────────────────
 
 POLITICAS_DESCUENTO_MOCK = [
-    # canal, tamano_canal, condicion_pago, vol_min_L, vol_max_L, descuento_pct, condiciones_adicionales, prioridad
-    ("tradicional", None,      "contado",  0,     50,     3.0,  None,                                             10),
-    ("tradicional", None,      "contado",  50,    150,    5.0,  None,                                             10),
-    ("tradicional", None,      "credito",  0,     150,    2.0,  "Sujeto a linea de credito aprobada",            10),
-    ("moderno",     None,      "contado",  0,     500,    6.0,  None,                                             10),
-    ("moderno",     None,      "contado",  500,   2000,   10.0, "Requiere exhibicion acordada",                   10),
-    ("moderno",     "grande",  "credito",  0,     2000,   7.0,  "Contrato comercial anual",                       20),
-    ("on_premise",  None,      "contado",  0,     300,    8.0,  "Aplica a formatos retornables",                  10),
-    ("on_premise",  None,      "credito",  0,     300,    5.0,  None,                                             10),
-    ("off_premise", None,      "contado",  0,     100,    4.0,  None,                                             10),
-    ("mayorista",   None,      "contado",  1000,  None,   15.0, "Volumen minimo de reventa",                       10),
-    ("mayorista",   None,      "credito",  1000,  None,   12.0, "Sujeto a linea de credito aprobada",             10),
-    ("ecommerce",   None,      "contado",  0,     None,   3.0,  "Precio online estandar",                         10),
-    ("institucional_horeca", None, "contado", 0,   2000,   10.0, None,                                            10),
-    ("institucional_horeca", None, "credito", 2000, None,  14.0, "Requiere contrato anual",                        20),
-    ("vending",     None,      "contado",  0,     None,   5.0,  None,                                             10),
-    ("todos",       None,      "contado",  0,     None,   0.0,  "Piso por defecto — sin politica especifica",     -1),
-    ("todos",       None,      "credito",  0,     None,   0.0,  "Piso por defecto — sin politica especifica",     -1),
+    # canal, tamano_canal, condicion_pago, vol_min_L, vol_max_L, descuento_pct, condiciones_adicionales, prioridad, activo
+    ("tradicional", None,      "contado",  0,     50,     3.0,  None,                                             10, 1),
+    ("tradicional", None,      "contado",  50,    150,    5.0,  None,                                             10, 1),
+    ("tradicional", None,      "contado",  150,   None,   7.0,  "Volumen alto para el canal",                     10, 1),
+    ("tradicional", "grande",  "contado",  0,     None,   6.0,  "Cuenta tradicional de mayor escala (ej. autoservicio grande)", 20, 1),
+    ("tradicional", None,      "credito",  0,     150,    2.0,  "Sujeto a linea de credito aprobada",            10, 1),
+    ("tradicional", None,      "credito",  150,   None,   4.0,  "Volumen alto, sujeto a linea de credito aprobada", 10, 1),
+    ("moderno",     None,      "contado",  0,     500,    6.0,  None,                                             10, 1),
+    ("moderno",     None,      "contado",  500,   2000,   10.0, "Requiere exhibicion acordada",                   10, 1),
+    ("moderno",     "pequeno", "contado",  0,     500,    5.0,  "Cuenta moderna de menor escala",                 20, 1),
+    ("moderno",     "mediano", "contado",  500,   2000,   8.0,  "Cuenta moderna de tamano medio",                 20, 1),
+    ("moderno",     "grande",  "contado",  2000,  None,   12.0, "Volumen muy alto, cuenta grande",                20, 1),
+    ("moderno",     "pequeno", "credito",  0,     1000,   5.0,  "Cuenta moderna de menor escala, credito",        20, 1),
+    ("moderno",     "grande",  "credito",  0,     2000,   7.0,  "Contrato comercial anual",                       20, 1),
+    ("on_premise",  None,      "contado",  0,     300,    8.0,  "Aplica a formatos retornables",                  10, 1),
+    ("on_premise",  "grande",  "contado",  300,   None,   9.0,  "On premise de alta rotacion (boliche/hotel grande)", 20, 1),
+    ("on_premise",  None,      "credito",  0,     300,    5.0,  None,                                             10, 1),
+    ("off_premise", None,      "contado",  0,     100,    4.0,  None,                                             10, 1),
+    ("off_premise", None,      "contado",  100,   None,   5.5,  "Volumen alto para off premise",                  10, 1),
+    ("off_premise", None,      "credito",  0,     None,   2.5,  "Credito para off premise",                       10, 1),
+    ("mayorista",   None,      "contado",  1000,  None,   15.0, "Volumen minimo de reventa",                       10, 1),
+    ("mayorista",   "grande",  "contado",  3000,  None,   18.0, "Distribuidor de gran escala",                     20, 1),
+    ("mayorista",   None,      "credito",  1000,  None,   12.0, "Sujeto a linea de credito aprobada",             10, 1),
+    ("ecommerce",   None,      "contado",  0,     None,   3.0,  "Precio online estandar",                         10, 1),
+    ("ecommerce",   None,      "credito",  0,     None,   2.0,  "Credito canal digital, poco frecuente",          10, 1),
+    ("institucional_horeca", None, "contado", 0,   2000,   10.0, None,                                            10, 1),
+    ("institucional_horeca", None, "credito", 2000, None,  14.0, "Requiere contrato anual",                        20, 1),
+    ("institucional_horeca", "grande", "credito", 0, None, 15.0, "Cadena hotelera con contrato anual, gran escala", 30, 1),
+    ("vending",     None,      "contado",  0,     None,   5.0,  None,                                             10, 1),
+    ("vending",     None,      "credito",  0,     None,   3.0,  "Poco frecuente en vending",                       10, 1),
+    ("todos",       None,      "contado",  0,     None,   0.0,  "Piso por defecto — sin politica especifica",     -1, 1),
+    ("todos",       None,      "credito",  0,     None,   0.0,  "Piso por defecto — sin politica especifica",     -1, 1),
+    # Ejemplos de campana estacional — cargadas INACTIVAS por defecto (activo=0):
+    # se activan/desactivan desde el editor de Politicas de descuento segun vigencia.
+    ("tradicional", None,      "contado",  0,     50,     6.0,  "Promocion de verano (diciembre-marzo)",          30, 0),
+    ("moderno",     None,      "contado",  0,     500,    8.0,  "Promocion fin de ano (diciembre)",               30, 0),
 ]
 
 
 def _match_politica(canal, tamano, condicion_pago, volumen_litros, politicas=POLITICAS_DESCUENTO_MOCK):
     """Replica en Python la misma logica de seleccion determinista que usara la tool
-    consultar_politica_descuento en chatbot.py: filtra por canal/condicion_pago/volumen,
+    consultar_politica_descuento en chatbot.py: filtra por canal/condicion_pago/volumen/activo,
     ordena por especificidad (tamano_canal exacto > canal exacto > prioridad) y toma la primera."""
     candidatas = []
-    for c, tam, cond, vmin, vmax, pct, cond_ad, prio in politicas:
+    for c, tam, cond, vmin, vmax, pct, cond_ad, prio, activo in politicas:
+        if not activo:
+            continue
         if cond != condicion_pago:
             continue
         if c != canal and c != "todos":
@@ -436,11 +497,13 @@ GESTIONES_POSVENTA_MOCK = _gen_gestiones_posventa(PEDIDOS_MOCK)
 # ── Ontologia de Procedimientos (canales) ───────────────────────────────────
 
 ONTOLOGIA_PROCEDIMIENTOS = """
-# Ontologia de Procedimientos por Canal — Coca-Cola Field Sales — v1.0
+# Ontologia de Procedimientos por Canal — Coca-Cola Field Sales — v2.0
 
 Eres un experto en politica comercial y procedimientos de venta de Coca-Cola para
-fuerza de venta en terreno. A continuacion se describen las categorias de canal
-que existen en la operacion y como negociar/proceder en cada una.
+fuerza de venta en terreno en Argentina. A continuacion se describen las categorias
+de canal que existen en la operacion, con sub-casos reales, estandares de ejecucion
+en punto de venta, frecuencia de visita y guiones de negociacion. Usa esto para
+asesorar al vendedor con precision segun el tipo de cuenta que tiene enfrente.
 
 ---
 
@@ -449,22 +512,65 @@ que existen en la operacion y como negociar/proceder en cada una.
 Almacenes, kioscos, autoservicios de barrio, despensas — el comercio de cercania.
 Es historicamente el canal de mayor volumen en Argentina y LatAm.
 
-- Pedidos de volumen chico y frecuencia alta (visitas semanales o quincenales).
-- La negociacion gira en torno a exhibicion (heladeras, gondolas) y descuentos por
-  volumen acumulado, no por contrato formal.
+**Sub-casos frecuentes:**
+- *Kiosco de esquina (tamano pequeno):* espacio de heladera limitado (1-2 puertas
+  compartidas con la competencia) — prioriza los SKUs de mayor rotacion (Coca-Cola
+  Original 500ml/354ml, Sprite, Fanta) antes de sugerir todo el portfolio.
+- *Almacen de barrio (tamano mediano):* suele tener heladera propia de la marca
+  (comodato) — verificar que este exhibida "cara al cliente" y con el frente
+  ordenado (facing).
+- *Autoservicio de esquina con caja rapida:* rotacion muy alta de formatos
+  individuales (lata, 500ml) — recomendar reposicion mas frecuente en vez de
+  pedidos grandes espaciados.
+
+**Ejecucion en punto de venta (POP):**
+- Heladera exclusiva o compartida segun el volumen historico de la cuenta — solo
+  se ofrece comodato de heladera propia a partir de tamano mediano con historial
+  de pedidos sostenido (usa `consultar_historico_pedidos` antes de ofrecerlo).
+- Material POP (afiches, hablador de precio, cenefa) se entrega sin costo; no
+  requiere aprobacion especial.
+- Facing recomendado: bebidas de mayor rotacion a la altura de los ojos.
+
+**Frecuencia de visita:** semanal a quincenal, segun tamano de canal (pequeno:
+quincenal: mediano/grande: semanal).
+
+**Negociacion:**
+- Gira en torno a exhibicion (heladeras, gondolas) y descuentos por volumen
+  acumulado, no por contrato formal.
 - Condicion de pago habitual: contado. El credito es mas restringido y requiere
-  buen track record.
-- Prioridad del vendedor: asegurar presencia de portfolio completo (gaseosas, aguas,
-  saborizadas) y buena visibilidad de heladera.
+  buen track record (revisar `consultar_historico_pedidos` para ver cumplimiento).
+- Argumento de venta: portfolio completo (gaseosas, aguas, jugos, saborizadas)
+  reduce la perdida de venta cuando un cliente busca una categoria que no tenes.
 
 ## 2. Canal Moderno (Modern Trade / MT)
 
 Supermercados e hipermercados, cadenas de autoservicio y mayoristas organizados
 (cash & carry).
 
+**Sub-casos frecuentes:**
+- *Supermercado de barrio independiente (mediano):* decision la toma el encargado
+  de local — negociacion agil, similar a TT pero con mayor volumen por pedido.
+- *Cadena regional o hipermercado (grande):* decision la toma una central de
+  compras — requiere propuesta formal (volumen anual, calendario promocional,
+  condiciones de pago) y acuerdo de exhibicion en gondola/cabecera.
+- *Cash & carry / mayorista organizado:* combina caracteristicas de MT y
+  Mayorista — revisar bien el tamano de canal antes de asumir la politica.
+
+**Ejecucion en punto de venta:**
+- Acuerdos de gondola/cabecera y exhibiciones adicionales (islas, puntas de
+  gondola) se negocian por separado del pedido — coordinar con el area de trade
+  marketing si el vendedor lo requiere, vos solo dejalo registrado en una nota.
+- Encartes/folletos promocionales de la cadena requieren volumen comprometido
+  con antelacion (tipicamente 30-45 dias antes de la fecha de encarte).
+
+**Frecuencia de visita:** semanal (cuentas medianas) a quincenal con seguimiento
+telefonico entre visitas (cuentas grandes con contrato).
+
+**Negociacion:**
 - Volumen alto por pedido, negociacion con central de compras o encargado de local.
-- Suele incluir acuerdos de exhibicion/gondola y condiciones de pago a credito.
-- Requiere coordinacion logistica con anticipacion (turnos de entrega, documentacion).
+- Condiciones de pago a credito son mas frecuentes aca que en TT.
+- Requiere coordinacion logistica con anticipacion (turnos de entrega, documentacion,
+  a veces remito con formato especifico de la cadena).
 - La politica de descuento aqui es mas agresiva en volumen alto — usar siempre la
   tool de consulta de politica antes de comprometer un numero.
 
@@ -473,26 +579,64 @@ Supermercados e hipermercados, cadenas de autoservicio y mayoristas organizados
 Bares, restaurantes, hoteles, boliches, cines — venta de "botella abierta" para
 consumo inmediato en el punto de venta.
 
-- Rotacion rapida, foco en formatos individuales y retornables (vidrio).
-- La relacion comercial suele incluir comodato de heladeras/equipos de frio.
-- Negociar reposicion frecuente y prioridad de espacio en barra/heladera.
+**Sub-casos frecuentes:**
+- *Bar/restaurante de barrio:* foco en gaseosas en formato retornable/lata y
+  aguas saborizadas (Aquarius) como acompanamiento de comidas.
+- *Boliche/discoteca:* alta rotacion de mixers (Schweppes tonica, pomelo, ginger
+  ale) para combinar con bebidas alcoholicas — anticipar reposicion en fines de
+  semana largos o eventos.
+- *Hotel:* suele combinar consumo en habitaciones (formatos individuales, minibar)
+  con eventos/salones (volumen puntual alto) — tratar como dos necesidades
+  distintas dentro de la misma cuenta.
+
+**Ejecucion en punto de venta:**
+- El comodato de heladera/equipo de frio es el estandar del canal — la cuenta
+  se compromete a exhibir y vender exclusivamente el portfolio del acuerdo a
+  cambio del equipo.
+- Prioridad de espacio en barra/heladera para las marcas de mayor rotacion.
+- Vidrio retornable es preferido por el menor costo por servicio en consumo
+  inmediato — mencionalo como argumento de rentabilidad para el cliente.
+
+**Frecuencia de visita:** alta (semanal), reposicion frecuente por la rotacion rapida.
+
+**Negociacion:**
+- Foco en formatos individuales y retornables (vidrio).
+- Descuento algo mayor en contado que en credito (ver `ontologia-descuentos`).
+- Argumento clave: menor tiempo de reposicion = menos quiebre de stock en el
+  momento de mayor consumo (findes, eventos).
 
 ## 4. Off Premise
 
 Todo lo que se compra para consumir en otro lugar (casa, oficina). Es una categoria
 ANALITICA que se solapa con Tradicional y Moderno — no reemplaza esos canales.
 Cuando una cuenta se clasifica puntualmente como "off_premise" (ej. un autoservicio
-de bebidas para llevar que no encaja claramente en TT ni MT), la politica de
-descuento se define por su propio canal, no por esta etiqueta.
+de bebidas para llevar, drugstore 24hs, o vinoteca que no encaja claramente en TT
+ni MT), la politica de descuento se define por su propio canal, no por esta etiqueta.
+
+- Formatos grandes (1.5L, 2.25L, 3L) predominan sobre los individuales, ya que el
+  consumo es diferido, no inmediato.
+- Frecuencia de visita similar a Tradicional.
 
 ## 5. Mayoristas / Distribuidores terceros (Wholesale)
 
 Distribuidores que compran en volumen y revenden a comercios mas chicos, en zonas
 de menor densidad o donde no se llega en forma directa.
 
-- Pedidos de volumen muy alto, precios mayoristas (mayor descuento por volumen).
-- La relacion es de reventa: el mayorista es cliente, no consumidor final.
+**Sub-casos frecuentes:**
+- *Distribuidor regional (grande):* opera con flota propia y revende a decenas de
+  comercios — la negociacion es puramente de precio por volumen, sin necesidad de
+  argumentos de exhibicion (el mayorista no exhibe al consumidor final).
+- *Mayorista de zona de baja densidad:* unico canal de llegada de producto en
+  zonas donde la distribucion directa no es rentable — la relacion es estrategica
+  para la cobertura geografica, no solo comercial.
+
+**Negociacion:**
+- Pedidos de volumen muy alto, precios mayoristas (mayor descuento por volumen —
+  el mas alto de todo el esquema, ver `politicas_descuento`).
+- La relacion es de reventa: el mayorista es cliente, no consumidor final — no
+  aplican acuerdos de exhibicion en punto de venta.
 - Frecuencia de visita baja (mensual o segun ciclo de reposicion propio).
+- Condicion de pago: frecuentemente credito, sujeto a linea aprobada por backoffice.
 
 ## 6. E-commerce / Canal digital
 
@@ -500,16 +644,29 @@ Marketplaces propios, quick-commerce (apps de delivery) y sitios de e-commerce d
 cadenas retail.
 
 - No hay visita fisica; la relacion es administrativa/logistica (SLA de entrega,
-  disponibilidad de catalogo online).
-- Precio estandar de canal digital, descuentos acotados salvo campana puntual.
+  disponibilidad de catalogo online, actualizacion de precios en la plataforma).
+- Precio estandar de canal digital, descuentos acotados salvo campana puntual
+  (ej. dia sin IVA, hot sale, campanas de la plataforma).
+- El vendedor en terreno rara vez gestiona esta cuenta dia a dia — su rol es mas
+  de seguimiento de catalogo/quiebres que de negociacion recurrente.
 
 ## 7. Institucional / Horeca
 
 Hoteles, restaurantes, catering, comedores corporativos, eventos — venta B2B a
 gran escala, con contratos y logistica diferenciada.
 
+**Sub-casos frecuentes:**
+- *Comedor corporativo/catering:* consumo programado y recurrente (almuerzos
+  diarios) — pedidos periodicos de volumen estable, formatos familiares.
+- *Salon de eventos/catering para eventos puntuales:* picos de demanda con poca
+  anticipacion — coordinar stock disponible antes de comprometer el volumen.
+- *Cadena hotelera:* combina consumo Horeca con on premise (bar/restaurante del
+  hotel) — puede requerir dos acuerdos distintos dentro de la misma cuenta.
+
+**Negociacion:**
 - Requiere contrato comercial (volumen anual comprometido) para acceder a mejores
-  condiciones.
+  condiciones — el mejor descuento del canal exige condicion de pago credito y
+  contrato anual (ver `politicas_descuento`).
 - Negociacion mas formal: involucra compras corporativas, no solo al encargado local.
 - Coordinar entregas programadas y facturacion consolidada.
 
@@ -518,28 +675,52 @@ gran escala, con contratos y logistica diferenciada.
 Maquinas expendedoras en oficinas, universidades, estaciones de servicio, edificios
 corporativos.
 
-- Reposicion programada, formatos individuales (lata, botella chica).
+- Reposicion programada, formatos individuales (lata 354ml, botella 500ml).
 - Ubicacion fija: la negociacion es con el administrador del edificio/predio,
   no con un punto de venta tradicional.
+- El acuerdo suele incluir exclusividad de marca en la maquina a cambio de la
+  instalacion del equipo — similar en logica al comodato de on premise pero sin
+  atencion al publico.
 
 ## 9. Directo vs. Indirecto (atributo transversal — NO es un canal mas)
 
 - **Directo:** fabrica/embotelladora → distribucion propia → punto de venta
-  (camiones y depositos propios).
+  (camiones y depositos propios). Tipico en Moderno, Mayoristas grandes e
+  Institucional/Horeca de gran escala, en zonas de alta densidad.
 - **Indirecto:** fabrica → mayorista/distribuidor tercero → minorista → consumidor.
+  Tipico en Tradicional y en zonas de menor densidad donde la distribucion directa
+  no es rentable.
 
 Este atributo aplica a CUALQUIERA de los 8 canales de arriba y define quien entrega
 fisicamente el pedido y quien factura. Consultalo en la ficha de la cuenta
-(`consultar_cuenta_cliente`) antes de prometer plazos de entrega.
+(`consultar_cuenta_cliente`) antes de prometer plazos de entrega — y recorda que
+no tenes una tool que confirme tiempos exactos, asi que nunca inventes un plazo.
+
+---
+
+## CONSIDERACIONES ESTACIONALES
+
+- **Verano (diciembre-marzo):** pico de demanda de aguas, saborizadas e isotonicas
+  (Powerade) por el calor — sugerir al vendedor anticipar volumen en cuentas de
+  on premise y tradicional antes de la temporada alta.
+- **Fiestas de fin de ano (diciembre):** pico de gaseosas en formatos familiares
+  (1.5L, 2.25L, 3L) para el canal tradicional y moderno — anticipar pedidos con
+  2-3 semanas de margen por la mayor demanda logistica de la temporada.
+- **Invierno (junio-agosto):** cae el consumo de aguas/isotonicas, se mantiene
+  gaseosas y sube el te (Fuze Tea) — es un buen momento para reforzar el
+  portfolio de te en on premise y tradicional.
+- Ninguna promocion estacional se aplica automaticamente: si el vendedor pregunta
+  por una campana puntual, consulta `consultar_politica_descuento` — si no
+  aparece reflejada ahi, no existe todavia y hay que escalarla.
 
 ---
 
 ## REGLAS DE ESCALAMIENTO
 
 - Si el cliente pide una condicion fuera de politica (descuento mayor al que
-  devuelve `consultar_politica_descuento`, plazo de pago no habitual, etc.):
-  **nunca prometas la excepcion vos mismo** — indicale al vendedor que debe
-  escalarlo a su supervisor comercial.
+  devuelve `consultar_politica_descuento`, plazo de pago no habitual, comodato
+  de heladera sin historial suficiente, etc.): **nunca prometas la excepcion vos
+  mismo** — indicale al vendedor que debe escalarlo a su supervisor comercial.
 - Si hay un problema con un pedido ya tomado (faltante, defecto, facturacion,
   demora), no lo resuelvas como si fuera una venta nueva: usa
   `abrir_gestion_posventa` para dejarlo trazado formalmente.
@@ -550,11 +731,13 @@ fisicamente el pedido y quien factura. Consultalo en la ficha de la cuenta
 # ── Ontologia de Politicas de Descuento ──────────────────────────────────────
 
 ONTOLOGIA_DESCUENTOS = """
-# Ontologia de Politicas de Descuento — Coca-Cola Field Sales — v1.0
+# Ontologia de Politicas de Descuento — Coca-Cola Field Sales — v2.0
 
 Esta ontologia explica la LOGICA de las politicas de descuento. El **numero exacto
 de descuento SIEMPRE se obtiene de la tool `consultar_politica_descuento`** —
 tenes PROHIBIDO calcular, estimar o inventar un porcentaje de descuento vos mismo.
+Los porcentajes y casos que aparecen aca son solo ilustrativos, para que entiendas
+el criterio — nunca los repitas como si fueran el numero real de un pedido.
 
 ## Como se determina un descuento
 
@@ -567,17 +750,41 @@ El descuento aplicable depende de la combinacion de:
 4. **Tamano del canal** (pequeno/mediano/grande) — algunas politicas aplican solo
    a cuentas grandes (ej. contratos anuales en Moderno o Institucional/Horeca).
 
-## Logica ilustrativa (referencia para el vendedor, NO para calcular vos mismo)
+Cuando hay mas de una politica que podria aplicar, gana la mas especifica (una
+fila con tamano de canal definido le gana a una generica del mismo canal, y una
+fila de un canal puntual le gana a la fila comodin "todos").
 
-- Canal Tradicional: descuentos moderados (2%-5%), mayores en contado que en credito.
-- Canal Moderno: descuentos crecen fuerte con el volumen, especialmente en cuentas
-  grandes con contrato anual.
-- On Premise: descuento algo mayor en contado, orientado a formatos retornables.
-- Mayoristas: los descuentos mas altos de todo el esquema, por revender en volumen.
-- E-commerce: descuento acotado y estable, es el precio de canal digital.
-- Institucional/Horeca: descuento mayor cuando hay contrato anual de volumen
-  comprometido (condicion de pago credito).
-- Vending: descuento fijo, no varia mucho por volumen.
+## Logica ilustrativa por canal (referencia para entender el criterio, NO para calcular vos mismo)
+
+- **Tradicional:** descuentos moderados, escalonados por volumen (mas bultos,
+  mejor descuento) y mayores en contado que en credito — el credito en este
+  canal es mas restringido, asociado a buen historial de pago.
+- **Moderno:** el descuento crece fuerte con el volumen. Ejemplo ilustrativo: un
+  pedido chico de una cuenta mediana tiene un descuento moderado; el mismo canal
+  con volumen alto y, ademas, una cuenta grande con contrato comercial anual en
+  credito, accede al mejor escalon del canal.
+- **On Premise:** descuento algo mayor en contado que en credito, orientado a
+  formatos retornables (menor costo de servicio para consumo inmediato).
+- **Off Premise:** descuento acotado, pensado para formatos grandes de consumo
+  diferido (no inmediato).
+- **Mayoristas:** los descuentos mas altos de todo el esquema, por revender en
+  volumen — requieren un volumen minimo relevante para aplicar.
+- **E-commerce:** descuento acotado y estable, es el precio de canal digital;
+  no varia por campanas salvo que exista una politica puntual cargada.
+- **Institucional/Horeca:** descuento moderado sin contrato; el mejor descuento
+  del canal exige contrato anual de volumen comprometido en condicion credito.
+- **Vending:** descuento fijo, no varia mucho por volumen — la negociacion de
+  este canal pasa mas por la ubicacion del equipo que por el volumen.
+
+## Acuerdos de exhibicion y promociones estacionales
+
+Los acuerdos de exhibicion (heladera exclusiva, gondola, cabecera) y las campanas
+estacionales (verano, fin de ano) son decisiones comerciales aparte del calculo
+de descuento por volumen — si existen, estan cargadas como una politica puntual
+en el sistema (por ejemplo con una fila de canal especifico y una nota en
+condiciones adicionales) y `consultar_politica_descuento` las va a reflejar. Si
+el vendedor pregunta por una promocion que no aparece ahi, **no la inventes**:
+indicale que hoy no hay una campana activa para ese caso y que puede escalarla.
 
 ## Que hacer si no hay politica aplicable
 
@@ -585,6 +792,19 @@ Si `consultar_politica_descuento` no encuentra una politica especifica, devuelve
 0% con un mensaje explicito de "sin politica aplicable, escalar a supervisor
 comercial". En ese caso: **nunca ofrezcas un descuento por tu cuenta** — informa
 al vendedor que debe escalarlo.
+
+## Casos ilustrativos de uso de la tool
+
+- *"Quiero saber el descuento para un pedido de 40 litros en un kiosco chico,
+  pago contado"* → llama a `consultar_politica_descuento` con canal=tradicional,
+  condicion_pago=contado, volumen_litros=40, tamano_canal=pequeno. Informa
+  exactamente lo que devuelve, ni mas ni menos.
+- *"El cliente quiere pagar a 30 dias en vez de contado"* → eso es un cambio de
+  condicion de pago: volve a consultar la politica con condicion_pago=credito
+  para el mismo canal/volumen antes de confirmar nada, el descuento puede cambiar.
+- *"¿Le puedo dar el mismo descuento que a la cuenta grande de la otra cuadra?"*
+  → no asumas nada de otra cuenta: consulta la politica con los datos reales de
+  ESTA cuenta (su propio canal, tamano y condicion de pago).
 
 ## Al tomar un pedido (`crear_pedido`)
 
@@ -599,7 +819,7 @@ al vendedor que debe escalarlo.
 # ── Ontologia FAQ ───────────────────────────────────────────────────────────
 
 ONTOLOGIA_FAQ = """
-# Ontologia FAQ — Fuerza de Venta Coca-Cola — v1.0
+# Ontologia FAQ — Fuerza de Venta Coca-Cola — v2.0
 
 Preguntas frecuentes de un vendedor en terreno. Adapta el tono, pero no inventes
 respuestas que no esten aqui.
@@ -618,6 +838,13 @@ respuestas que no esten aqui.
   correcto para la combinacion canal + volumen + condicion de pago — es una
   unica cifra determinista, no se suman politicas.
 
+**El cliente dice que la competencia le ofrece mejor precio, ¿que argumento uso?**
+- No entres en guerra de precios sin autorizacion. Argumenta valor: portfolio
+  completo, frecuencia de reposicion, comodato de equipos de frio, y consulta si
+  el volumen del cliente ya esta en el mejor escalon de descuento disponible
+  segun `consultar_politica_descuento`. Si no lo esta, mostrale que volumen
+  necesitaria para acceder a un descuento mayor.
+
 ---
 
 ## CONDICIONES DE PAGO
@@ -630,6 +857,11 @@ respuestas que no esten aqui.
 **El pedido quedo `rechazado` por backoffice, ¿que hago?**
 - Consulta el motivo en las notas del pedido. Si es por credito, abre una gestion
   de posventa de tipo `solicitud_credito` para que backoffice revise la linea.
+
+**¿Se puede pagar parte contado y parte credito en el mismo pedido?**
+- No, la condicion de pago es unica por pedido. Si el cliente quiere dividirlo,
+  se registran dos pedidos separados, cada uno con su condicion de pago y su
+  descuento correspondiente.
 
 ---
 
@@ -644,6 +876,11 @@ respuestas que no esten aqui.
 - No, es un dato estructural de la cuenta que gestiona el area comercial, no
   una tool disponible para el vendedor en el chat.
 
+**El cliente pregunta cuando le llega el pedido, ¿que le digo?**
+- No inventes un tiempo de entrega — no hay una tool que lo confirme. Indica que
+  depende de la coordinacion logistica (directa o indirecta segun la cuenta) y
+  que debe confirmarse con el area de logistica o backoffice.
+
 ---
 
 ## CATALOGO Y SKUs
@@ -651,6 +888,40 @@ respuestas que no esten aqui.
 **El cliente pide un producto que no aparece en el catalogo, ¿que hago?**
 - Informa que no esta disponible en el catalogo actual y ofrece sugerir un
   producto similar de la misma categoria. No inventes un SKU ni un precio.
+
+**El cliente pregunta por un producto de otra marca de bebidas (no Coca-Cola), ¿que hago?**
+- Aclara con cortesia que trabajas exclusivamente con el portfolio de Coca-Cola
+  (gaseosas, aguas, jugos, saborizadas, isotonicas, tes y la linea AdeS) y ofrece
+  el sustituto mas cercano del catalogo propio.
+
+---
+
+## COMODATO Y EJECUCION EN PUNTO DE VENTA
+
+**¿Cuando corresponde ofrecer comodato de heladera o equipo de frio?**
+- Es una decision comercial que depende del historial y volumen de la cuenta
+  (revisa `consultar_historico_pedidos`). No es automatico ni esta parametrizado
+  como una tool — si el vendedor lo pide para una cuenta chica sin historial,
+  indicale que debe evaluarlo con su supervisor comercial.
+
+**El cliente quiere exhibir productos de la competencia en la heladera de comodato, ¿que hago?**
+- Recuerda que el comodato suele implicar exclusividad de marca segun el acuerdo
+  comercial vigente. No es algo que puedas resolver vos en el chat — indicale al
+  vendedor que revise el acuerdo firmado con la cuenta y, si hay dudas, escale
+  a su supervisor comercial.
+
+---
+
+## GESTIONES DE POSVENTA
+
+**¿Cuando abro una gestion de posventa en vez de tomar un pedido nuevo?**
+- Siempre que el problema sea sobre un pedido YA ENTREGADO/TOMADO: faltante de
+  bultos, producto defectuoso, error de facturacion, demora en la entrega
+  pactada, o una solicitud de revision de credito. Usa `abrir_gestion_posventa`.
+
+**¿Puedo abrir mas de una gestion para el mismo problema?**
+- No — antes de abrir una nueva, usa `consultar_gestiones_posventa` con el
+  numero de pedido para verificar si ya existe una gestion abierta para ese caso.
 
 ---
 
@@ -663,6 +934,27 @@ respuestas que no esten aqui.
 **¿Puedo modificar un pedido ya `aprobado` o `facturado`?**
 - No mediante las tools de toma de pedido. Cualquier ajuste en ese estado se
   gestiona como una gestion de posventa (`abrir_gestion_posventa`).
+
+**El cliente quiere agregar productos a un pedido que ya quedo `solicitado`, ¿que hago?**
+- No se puede editar el detalle de un pedido ya registrado. Registra un pedido
+  nuevo con los productos adicionales, o si el original todavia no fue revisado,
+  cancelalo (`cancelar_pedido`) y toma uno nuevo con el detalle completo.
+
+---
+
+## ESTACIONALIDAD Y PORTFOLIO
+
+**¿Que productos conviene reforzar en la visita segun la epoca del ano?**
+- Verano: aguas, saborizadas (Aquarius) e isotonicas (Powerade). Fin de ano:
+  gaseosas en formatos familiares. Invierno: sostener gaseosas y reforzar tes
+  (Fuze Tea). Ver el detalle en `ontologia_procedimientos`, seccion de
+  consideraciones estacionales.
+
+**¿Hay descuentos especiales por estacionalidad?**
+- Solo si estan cargados como una politica puntual — consulta siempre
+  `consultar_politica_descuento`. Si el vendedor pregunta por una campana que no
+  aparece reflejada ahi, no existe todavia: no la inventes, indicale que la
+  escale para confirmar si corresponde.
 """
 
 # ── System Prompt ────────────────────────────────────────────────────────────
@@ -939,6 +1231,19 @@ def setup():
                 activo = 1
         """, prod)
 
+    # SKUs de una version anterior del catalogo (marcas que no son reales del
+    # portfolio de Coca-Cola Argentina/FEMSA, o codigos renombrados). Se
+    # desactivan en vez de borrarse: pedidos ya sembrados los referencian por FK.
+    _SKUS_OBSOLETOS = (
+        "CC-355-RET", "LAT-354-CJ", "AGB-500-NR", "AGC-500-NR", "AGB-2000-NR",
+        "SAB-500-NR", "SAB-1500-NR", "JUG-200-NR", "JUG-1000-NR", "ISO-500-NR",
+        "ENE-473-NR",
+    )
+    cur.executemany(
+        "UPDATE productos SET activo = 0 WHERE codigo_sku = %s",
+        [(s,) for s in _SKUS_OBSOLETOS],
+    )
+
     # ── Insertar empresas cliente ─────────────────────────────────────────────
     print("Insertando empresas_clientes...")
     for emp in EMPRESAS_CLIENTES_MOCK:
@@ -960,31 +1265,40 @@ def setup():
             cur.execute("""
                 INSERT INTO politicas_descuento (canal, tamano_canal, condicion_pago, volumen_min_litros,
                                                   volumen_max_litros, descuento_pct, condiciones_adicionales, prioridad, activo)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 1)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, pol)
     else:
         print("politicas_descuento ya tiene datos, no se resiembra (se conservan las ediciones de la UI).")
 
-    # ── Insertar pedidos ─────────────────────────────────────────────────────
-    print("Insertando pedidos...")
-    for ped in PEDIDOS_MOCK:
-        cur.execute("""
-            INSERT INTO pedidos (numero_pedido, empresa_cliente_id, fecha_pedido, estado, canal_venta,
-                                  condicion_pago, vendedor, descuento_aplicado_pct, subtotal, total, notas,
-                                  fecha_actualizacion_estado)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ON DUPLICATE KEY UPDATE estado = VALUES(estado)
-        """, ped)
+    # ── Insertar pedidos + detalle + gestiones (solo si la tabla pedidos esta
+    # vacia) ──────────────────────────────────────────────────────────────────
+    # _gen_pedidos() asume que el producto_id/empresa_cliente_id coincide con la
+    # posicion en PRODUCTOS_MOCK/EMPRESAS_CLIENTES_MOCK — solo es valido en una
+    # instalacion fresca. En una BD que ya tiene pedidos reales (tomados desde el
+    # chat) NO se debe resembrar: se romperia la FK contra el catalogo actual y,
+    # sobre todo, se pisarian pedidos reales del negocio.
+    cur.execute("SELECT COUNT(*) FROM pedidos")
+    if cur.fetchone()[0] == 0:
+        print("Insertando pedidos...")
+        for ped in PEDIDOS_MOCK:
+            cur.execute("""
+                INSERT INTO pedidos (numero_pedido, empresa_cliente_id, fecha_pedido, estado, canal_venta,
+                                      condicion_pago, vendedor, descuento_aplicado_pct, subtotal, total, notas,
+                                      fecha_actualizacion_estado)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON DUPLICATE KEY UPDATE estado = VALUES(estado)
+            """, ped)
 
-    # ── Insertar detalles de pedido ──────────────────────────────────────────
-    print("Insertando detalles de pedido...")
-    for det in DETALLES_MOCK:
-        cur.execute("""
-            INSERT INTO detalle_pedido (numero_pedido, producto_id, cantidad, precio_unitario,
-                                         descuento_pct, precio_neto_unitario, subtotal_linea)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-            ON DUPLICATE KEY UPDATE cantidad = VALUES(cantidad)
-        """, det)
+        print("Insertando detalles de pedido...")
+        for det in DETALLES_MOCK:
+            cur.execute("""
+                INSERT INTO detalle_pedido (numero_pedido, producto_id, cantidad, precio_unitario,
+                                             descuento_pct, precio_neto_unitario, subtotal_linea)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ON DUPLICATE KEY UPDATE cantidad = VALUES(cantidad)
+            """, det)
+    else:
+        print("La tabla pedidos ya tiene datos, no se resiembran pedidos/detalle mock (se conservan los pedidos reales).")
 
     # ── Insertar gestiones de posventa ───────────────────────────────────────
     print(f"Insertando {len(GESTIONES_POSVENTA_MOCK)} gestiones de posventa mock...")
