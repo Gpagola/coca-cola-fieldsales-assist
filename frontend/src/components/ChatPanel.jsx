@@ -722,7 +722,7 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
                 <textarea
                   ref={textareaRef}
                   className="chat-input"
-                  placeholder={ended ? "Conversación finalizada" : "Escribe un mensaje..."}
+                  placeholder={ended ? "Conversación finalizada" : "Mensaje..."}
                   value={input}
                   onChange={handleInput}
                   onKeyDown={handleKeyDown}
