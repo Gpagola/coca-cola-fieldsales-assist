@@ -388,6 +388,34 @@ def transcribe_audio():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/speak", methods=["POST"])
+def speak_text():
+    """
+    Convierte una oracion de la respuesta del asistente en audio con la voz
+    de OpenAI (mucho mas natural que la voz nativa del navegador) para el
+    modo de voz del chat movil. Body: { "text": "..." }
+    """
+    data = request.get_json()
+    text = (data.get("text") or "").strip()
+    if not text:
+        return jsonify({"error": "text es requerido"}), 400
+
+    client = OpenAI()
+
+    try:
+        response = client.audio.speech.create(
+            model="gpt-4o-mini-tts",
+            voice="nova",
+            input=text,
+            instructions="Hablá en español rioplatense, con tono profesional, calido y cercano, "
+                         "como un coach de ventas que acompaña a un vendedor en terreno.",
+        )
+        return Response(response.read(), mimetype="audio/mpeg")
+    except Exception as e:
+        print(f"ERROR en /api/speak: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
 def _interpretar_con_vision(client, texto_plano=None, b64_imagen=None, b64_pdf=None, mime="image/jpeg"):
     """Llama a GPT-4o para interpretar el documento y clasificarlo."""
     instruccion = """Eres un asistente de fuerza de venta en terreno de Coca-Cola.
