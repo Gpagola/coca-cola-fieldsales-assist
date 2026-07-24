@@ -43,61 +43,46 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
   const voicesRef        = useRef([])
   const utteranceRef     = useRef(null)
   const speechUnlockedRef = useRef(false)
-  const audioCtxRef      = useRef(null)
-  const sonarIntervalRef = useRef(null)
+  const sonarAudioRef    = useRef(null)
   const sonarTimeoutRef  = useRef(null)
 
-  // iOS Safari solo deja sonar speechSynthesis.speak() si se llama dentro de
-  // (o muy cerca de) un gesto real del usuario. Nuestro speak() real llega
-  // varios segundos despues (grabar -> transcribir -> enviar -> stream de la
-  // respuesta), asi que "desbloqueamos" el motor con un toque real apenas
-  // el vendedor entra en modo audio o toca grabar. Aprovechamos el mismo
-  // gesto para crear/despertar el AudioContext del sonido de "sonar".
+  function getSonarAudio() {
+    if (!sonarAudioRef.current) {
+      const audio = new Audio(`${import.meta.env.BASE_URL}sounds/drmseq-appulse-165912.mp3`)
+      audio.loop = true
+      audio.volume = 0.5
+      sonarAudioRef.current = audio
+    }
+    return sonarAudioRef.current
+  }
+
+  // iOS Safari solo deja sonar speechSynthesis.speak() y <audio>.play() si se
+  // llaman dentro de (o muy cerca de) un gesto real del usuario. Los llamados
+  // reales llegan varios segundos despues (grabar -> transcribir -> enviar ->
+  // stream de la respuesta), asi que "desbloqueamos" ambos con un toque real
+  // apenas el vendedor entra en modo audio o toca grabar.
   function unlockSpeech() {
-    getAudioCtx()
+    const audio = getSonarAudio()
+    audio.play().then(() => { audio.pause(); audio.currentTime = 0 }).catch(() => {})
     if (speechUnlockedRef.current || !("speechSynthesis" in window)) return
     speechUnlockedRef.current = true
     window.speechSynthesis.speak(new SpeechSynthesisUtterance(" "))
   }
 
-  function getAudioCtx() {
-    const Ctx = window.AudioContext || window.webkitAudioContext
-    if (!Ctx) return null
-    if (!audioCtxRef.current) audioCtxRef.current = new Ctx()
-    if (audioCtxRef.current.state === "suspended") audioCtxRef.current.resume()
-    return audioCtxRef.current
-  }
-
-  function playSonarPing() {
-    const ctx = getAudioCtx()
-    if (!ctx) return
-    const osc  = ctx.createOscillator()
-    const gain = ctx.createGain()
-    osc.type = "sine"
-    osc.frequency.setValueAtTime(880, ctx.currentTime)
-    osc.frequency.exponentialRampToValueAtTime(600, ctx.currentTime + 0.3)
-    gain.gain.setValueAtTime(0.0001, ctx.currentTime)
-    gain.gain.exponentialRampToValueAtTime(0.2, ctx.currentTime + 0.02)
-    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.4)
-    osc.connect(gain)
-    gain.connect(ctx.destination)
-    osc.start()
-    osc.stop(ctx.currentTime + 0.4)
-  }
-
-  // Sonido tipo sonar en loop mientras se procesa el mensaje de voz y hasta
+  // Sonido de espera en loop mientras se procesa el mensaje de voz y hasta
   // que arranca la lectura en voz alta de la respuesta (cubre el silencio de
   // "pensando" + streaming + el pequeno delta antes de que hable el TTS).
   function startSonar() {
-    if (!enableVoice || !voiceMode || sonarIntervalRef.current) return
-    playSonarPing()
-    sonarIntervalRef.current = setInterval(playSonarPing, 1200)
+    if (!enableVoice || !voiceMode) return
+    const audio = getSonarAudio()
+    audio.currentTime = 0
+    audio.play().catch(() => {})
     sonarTimeoutRef.current = setTimeout(stopSonar, 20000) // resguardo por si algo no llama a stopSonar
   }
 
   function stopSonar() {
-    if (sonarIntervalRef.current) { clearInterval(sonarIntervalRef.current); sonarIntervalRef.current = null }
-    if (sonarTimeoutRef.current)  { clearTimeout(sonarTimeoutRef.current); sonarTimeoutRef.current = null }
+    if (sonarAudioRef.current) { sonarAudioRef.current.pause(); sonarAudioRef.current.currentTime = 0 }
+    if (sonarTimeoutRef.current) { clearTimeout(sonarTimeoutRef.current); sonarTimeoutRef.current = null }
   }
 
   async function streamChat(message, sessionId, controller, onToken, onStatus, onPedido, onSuggestions, onCierre, onRiskProfile) {
@@ -261,7 +246,6 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
       window.speechSynthesis.onvoiceschanged = null
       window.speechSynthesis.cancel()
       stopSonar()
-      audioCtxRef.current?.close()
     }
   }, [enableVoice])
 
