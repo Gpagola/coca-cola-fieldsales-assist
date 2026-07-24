@@ -5,6 +5,8 @@ import ChatPanel from "./components/ChatPanel"
 import AutopilotPanel from "./components/AutopilotPanel"
 import PerfilSelector from "./components/PerfilSelector"
 import PortalVendedor from "./components/PortalVendedor"
+import MobileChatView from "./components/MobileChatView"
+import useIsMobile from "./hooks/useIsMobile"
 import "./App.css"
 
 const MIN_WIDTH = 360
@@ -82,6 +84,11 @@ export default function App() {
   const adminVisible = showAdmin && !adminCollapsed
 
   const TAB_TITLES = { portal: "BBDD", lab: "Auto-test", test: "Manual-test", user: "User-test" }
+
+  const isMobile = useIsMobile()
+  if (isMobile) {
+    return <MobileChatView theme={theme} toggleTheme={toggleTheme} onLoadingChange={setChatLoading} />
+  }
 
   return (
     <div className="app">

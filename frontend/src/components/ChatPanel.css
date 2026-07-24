@@ -728,3 +728,30 @@
 .pp-badge.estado-preparando,
 .pp-badge.estado-cancelado,
 .pp-badge.estado-devuelto    { color: var(--text-muted); }
+
+/* ── Responsive (celulares / ventanas angostas) ──────────────────────────────
+   Bloque aditivo: solo se activa por debajo del breakpoint, nunca afecta
+   el layout de escritorio normal. */
+@media (max-width: 820px) {
+  .message-row, .agent-status-row {
+    max-width: 100%;
+    padding: 0 12px;
+  }
+
+  .session-bar { padding: 10px 12px; gap: 6px 10px; }
+
+  .input-area { padding: 10px 12px 16px; max-width: 100%; }
+
+  .messages { padding: 16px 0 24px; }
+
+  .bubble { max-width: 88%; font-size: 15px; }
+
+  /* Resguardo: si alguien angosta una ventana de escritorio en Manual-test/User-test
+     (showEval=true), el sidebar de radar de 280px no debe forzar overflow. */
+  .chat-panel { flex-direction: column; }
+  .chat-radar-sidebar {
+    width: 100%;
+    border-left: none;
+    border-top: 1px solid var(--border);
+  }
+}
