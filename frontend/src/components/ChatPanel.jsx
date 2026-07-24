@@ -11,7 +11,7 @@ const API = import.meta.env.VITE_API_URL || "/api"
 const ACCEPTED = ".pdf,.jpg,.jpeg,.png,.webp"
 
 
-export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false, initialClienteCodigo = null }) {
+export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false, initialClienteCodigo = null, enableVoice = false }) {
   const [sessionId, setSessionId]   = useState(null)
   const [messages, setMessages]     = useState([])
   const [input, setInput]           = useState("")
@@ -28,6 +28,8 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
   const [riskProfile, setRiskProfile]     = useState(null)
   const [retention, setRetention]         = useState(null)
   const [sentimentPts, setSentimentPts]   = useState([])
+  const [voiceMode, setVoiceMode]         = useState(false)
+  const [recState, setRecState]           = useState("idle") // "idle" | "recording" | "transcribing"
   const bottomRef    = useRef(null)
   const textareaRef  = useRef(null)
   const abortRef     = useRef(null)
@@ -35,6 +37,10 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
   const genRef       = useRef(0)
   const messagesRef  = useRef([])
   const pedidoRef    = useRef(null)
+  const mediaRecorderRef = useRef(null)
+  const audioChunksRef   = useRef([])
+  const mediaStreamRef   = useRef(null)
+  const voicesRef        = useRef([])
 
   async function streamChat(message, sessionId, controller, onToken, onStatus, onPedido, onSuggestions, onCierre, onRiskProfile) {
     const res = await fetch(`${API}/chat`, {
@@ -157,6 +163,7 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
               if (profile.sentimiento != null) setSentimentPts(prev => [...prev, profile.sentimiento])
             }
           )
+          speakText(accumulated)
         } catch (e) {
           if (e.name !== "AbortError")
             setMessages(prev => [...prev, { role: "assistant", content: `⚠️ Error: ${e.message}` }])
@@ -187,8 +194,95 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
     if (!loading) textareaRef.current?.focus()
   }, [loading])
 
-  async function sendMessage() {
-    const text = input.trim()
+  useEffect(() => {
+    if (!enableVoice || !("speechSynthesis" in window)) return
+    const loadVoices = () => { voicesRef.current = window.speechSynthesis.getVoices() }
+    loadVoices()
+    window.speechSynthesis.onvoiceschanged = loadVoices
+    return () => {
+      window.speechSynthesis.onvoiceschanged = null
+      window.speechSynthesis.cancel()
+    }
+  }, [enableVoice])
+
+  function stripForSpeech(text) {
+    return text
+      .replace(/\*\*(.*?)\*\*/g, "$1")
+      .replace(/\*(.*?)\*/g, "$1")
+      .replace(/^#+\s*/gm, "")
+      .replace(/^[-*]\s+/gm, "")
+      .replace(/`/g, "")
+      .replace(/\p{Emoji_Presentation}/gu, "")
+      .trim()
+  }
+
+  function speakText(text) {
+    if (!enableVoice || !voiceMode || !("speechSynthesis" in window) || !text.trim()) return
+    window.speechSynthesis.cancel()
+    const utterance = new SpeechSynthesisUtterance(stripForSpeech(text))
+    utterance.lang = "es-AR"
+    const esVoice = voicesRef.current.find(v => v.lang?.startsWith("es"))
+    if (esVoice) utterance.voice = esVoice
+    window.speechSynthesis.speak(utterance)
+  }
+
+  function toggleVoiceMode() {
+    window.speechSynthesis?.cancel()
+    if (voiceMode && recState !== "idle") {
+      mediaRecorderRef.current?.stop()
+      mediaStreamRef.current?.getTracks().forEach(t => t.stop())
+      setRecState("idle")
+    }
+    setVoiceMode(v => !v)
+  }
+
+  async function startRecording() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      mediaStreamRef.current = stream
+      const mimeType = ["audio/webm", "audio/mp4", "audio/ogg"].find(t => MediaRecorder.isTypeSupported(t)) || ""
+      const rec = new MediaRecorder(stream, mimeType ? { mimeType } : undefined)
+      audioChunksRef.current = []
+      rec.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data) }
+      rec.onstop = () => {
+        mediaStreamRef.current?.getTracks().forEach(t => t.stop())
+        mediaStreamRef.current = null
+        const blob = new Blob(audioChunksRef.current, { type: mimeType || "audio/webm" })
+        transcribeAndSend(blob, mimeType)
+      }
+      mediaRecorderRef.current = rec
+      rec.start()
+      setRecState("recording")
+    } catch (e) {
+      setMessages(prev => [...prev, { role: "assistant", content: "⚠️ No se pudo acceder al micrófono. Revisá los permisos del navegador." }])
+    }
+  }
+
+  function stopRecording() {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      mediaRecorderRef.current.stop()
+      setRecState("transcribing")
+    }
+  }
+
+  async function transcribeAndSend(blob, mimeType) {
+    try {
+      const ext = mimeType.includes("mp4") ? "mp4" : mimeType.includes("ogg") ? "ogg" : "webm"
+      const formData = new FormData()
+      formData.append("audio", blob, `recording.${ext}`)
+      const res = await fetch(`${API}/transcribe`, { method: "POST", body: formData })
+      const data = await res.json()
+      if (data.error) throw new Error(data.error)
+      if (data.text?.trim()) sendMessage(data.text.trim())
+    } catch (e) {
+      setMessages(prev => [...prev, { role: "assistant", content: `⚠️ Error al transcribir el audio: ${e.message}` }])
+    } finally {
+      setRecState("idle")
+    }
+  }
+
+  async function sendMessage(overrideText) {
+    const text = (overrideText ?? input).trim()
     if ((!text && !attachedFile) || !sessionId) return
 
     // Abort any in-progress stream and claim this generation
@@ -271,6 +365,7 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
         if (profile.resolucion != null) setRetention(profile.resolucion)
         if (profile.sentimiento != null) setSentimentPts(prev => [...prev, profile.sentimiento])
       })
+      speakText(accumulated)
     } catch (e) {
       if (e.name !== "AbortError")
         setMessages(prev => [...prev, { role: "assistant", content: `⚠️ Error: ${e.message}` }])
@@ -495,51 +590,93 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
         )}
         <div className="input-row">
           <div className="input-box">
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept={ACCEPTED}
-              style={{ display: "none" }}
-              onChange={handleFileChange}
-            />
-            <button
-              className="attach-btn"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={!sessionId}
-              title="Adjuntar un archivo PDF o imagen. El asistente SA puede leer documentos del cliente (facturas, fotos de producto, comprobantes) para resolver mejor la consulta según las ontologías activas."
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
-              </svg>
-            </button>
-            <textarea
-              ref={textareaRef}
-              className="chat-input"
-              placeholder={ended ? "Conversación finalizada" : "Escribe un mensaje..."}
-              value={input}
-              onChange={handleInput}
-              onKeyDown={handleKeyDown}
-              rows={1}
-              disabled={!sessionId || ended}
-            />
-            {!ended && (loading ? (
-              <button className="stop-btn" onClick={handleStop} title="Detener la respuesta del asistente SA en curso. Útil si detectas que la ontología está generando una respuesta incorrecta o demasiado larga.">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                  <rect x="3" y="3" width="18" height="18" rx="2"/>
-                </svg>
-              </button>
-            ) : (
+            {enableVoice && (
               <button
-                className="send-btn"
-                onClick={sendMessage}
-                disabled={(!input.trim() && !attachedFile) || !sessionId}
-                title="Enviar tu mensaje al asistente SA (también puedes pulsar Enter). El asistente responderá aplicando las ontologías activas: el system prompt define su personalidad, los procedimientos guían la gestión y las FAQ aportan información sobre políticas."
+                className="mode-toggle-btn"
+                onClick={toggleVoiceMode}
+                disabled={!sessionId}
+                title={voiceMode ? "Volver a modo texto" : "Cambiar a modo audio"}
               >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
-                </svg>
+                {voiceMode ? (
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="2" y="5" width="20" height="14" rx="2"/><path d="M6 9h.01M10 9h.01M14 9h.01M18 9h.01M6 13h.01M18 13h.01M8 13h8"/>
+                  </svg>
+                ) : (
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v1a7 7 0 0 1-14 0v-1"/><line x1="12" y1="18" x2="12" y2="22"/>
+                  </svg>
+                )}
               </button>
-            ))}
+            )}
+            {voiceMode ? (
+              <div className="voice-record-row">
+                <button
+                  className={`voice-record-btn ${recState}`}
+                  onClick={recState === "recording" ? stopRecording : recState === "idle" ? startRecording : undefined}
+                  disabled={recState === "transcribing" || !sessionId}
+                  title={recState === "recording" ? "Detener grabación y enviar" : "Tocar para hablar"}
+                >
+                  {recState === "recording" ? (
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
+                  ) : (
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v1a7 7 0 0 1-14 0v-1"/><line x1="12" y1="18" x2="12" y2="22"/>
+                    </svg>
+                  )}
+                </button>
+                <span className="voice-status-label">
+                  {recState === "recording" ? "Escuchando..." : recState === "transcribing" ? "Transcribiendo..." : "Tocá para hablar"}
+                </span>
+              </div>
+            ) : (
+              <>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept={ACCEPTED}
+                  style={{ display: "none" }}
+                  onChange={handleFileChange}
+                />
+                <button
+                  className="attach-btn"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={!sessionId}
+                  title="Adjuntar un archivo PDF o imagen. El asistente SA puede leer documentos del cliente (facturas, fotos de producto, comprobantes) para resolver mejor la consulta según las ontologías activas."
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+                  </svg>
+                </button>
+                <textarea
+                  ref={textareaRef}
+                  className="chat-input"
+                  placeholder={ended ? "Conversación finalizada" : "Escribe un mensaje..."}
+                  value={input}
+                  onChange={handleInput}
+                  onKeyDown={handleKeyDown}
+                  rows={1}
+                  disabled={!sessionId || ended}
+                />
+                {!ended && (loading ? (
+                  <button className="stop-btn" onClick={handleStop} title="Detener la respuesta del asistente SA en curso. Útil si detectas que la ontología está generando una respuesta incorrecta o demasiado larga.">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                      <rect x="3" y="3" width="18" height="18" rx="2"/>
+                    </svg>
+                  </button>
+                ) : (
+                  <button
+                    className="send-btn"
+                    onClick={() => sendMessage()}
+                    disabled={(!input.trim() && !attachedFile) || !sessionId}
+                    title="Enviar tu mensaje al asistente SA (también puedes pulsar Enter). El asistente responderá aplicando las ontologías activas: el system prompt define su personalidad, los procedimientos guían la gestión y las FAQ aportan información sobre políticas."
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+                    </svg>
+                  </button>
+                ))}
+              </>
+            )}
           </div>
           {showEval && (
             <button

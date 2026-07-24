@@ -36,7 +36,7 @@ export default function MobileChatView({ theme, toggleTheme, onLoadingChange }) 
         </button>
       </div>
       <div className="mobile-chat-wrap">
-        <ChatPanel onLoadingChange={onLoadingChange} showEval={false} />
+        <ChatPanel onLoadingChange={onLoadingChange} showEval={false} enableVoice />
       </div>
     </div>
   )

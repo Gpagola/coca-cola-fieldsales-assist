@@ -364,6 +364,30 @@ def upload_document():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/transcribe", methods=["POST"])
+def transcribe_audio():
+    """
+    Recibe una grabacion de audio (modo de voz del chat movil) y la transcribe
+    a texto con Whisper para pasarla al agente como si el vendedor la hubiera escrito.
+    """
+    if "audio" not in request.files:
+        return jsonify({"error": "No se recibio ningun audio"}), 400
+
+    audio_file = request.files["audio"]
+    client = OpenAI()
+
+    try:
+        transcript = client.audio.transcriptions.create(
+            model="whisper-1",
+            file=(audio_file.filename or "recording.webm", audio_file.read(), audio_file.mimetype),
+            language="es",
+        )
+        return jsonify({"text": transcript.text})
+    except Exception as e:
+        print(f"ERROR en /api/transcribe: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
 def _interpretar_con_vision(client, texto_plano=None, b64_imagen=None, b64_pdf=None, mime="image/jpeg"):
     """Llama a GPT-4o para interpretar el documento y clasificarlo."""
     instruccion = """Eres un asistente de fuerza de venta en terreno de Coca-Cola.
