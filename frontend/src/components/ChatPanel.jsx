@@ -290,6 +290,8 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
 
   async function startRecording() {
     unlockSpeech()
+    window.speechSynthesis?.cancel() // si el asistente estaba hablando, cortar de inmediato y pasar a escuchar
+    stopSonar()
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       mediaStreamRef.current = stream
