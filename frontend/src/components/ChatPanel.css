@@ -746,6 +746,13 @@
 
   .bubble { max-width: 88%; font-size: 15px; }
 
+  /* iOS Safari hace zoom automatico al enfocar un input/textarea con
+     font-size menor a 16px, y a veces ese zoom queda pegado despues de
+     cerrar el teclado. 16px lo evita sin desactivar el pinch-zoom del
+     usuario (no tocamos el viewport meta). */
+  .chat-input { font-size: 16px; }
+  .search-input { font-size: 16px; }
+
   /* Resguardo: si alguien angosta una ventana de escritorio en Manual-test/User-test
      (showEval=true), el sidebar de radar de 280px no debe forzar overflow. */
   .chat-panel { flex-direction: column; }
