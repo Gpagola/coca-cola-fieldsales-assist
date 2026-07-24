@@ -42,6 +42,7 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
   const mediaStreamRef   = useRef(null)
   const voicesRef        = useRef([])
   const utteranceRef     = useRef(null)
+  const utteranceQueueRef = useRef([])
   const speechUnlockedRef = useRef(false)
   const sonarAudioRef    = useRef(null)
   const sonarTimeoutRef  = useRef(null)
@@ -276,6 +277,51 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
     window.speechSynthesis.speak(utterance)
   }
 
+  // Habla un fragmento (oracion) apenas esta listo, en vez de esperar a que
+  // termine toda la respuesta -- asi el audio arranca antes y ese mismo
+  // fragmento recien despues se revela en pantalla (ver extractReadyChunks).
+  // Los speak() sucesivos se encolan solos en speechSynthesis sin cancel()
+  // de por medio, asi que las oraciones se leen en orden sin superponerse.
+  function speakChunk(text, isFirst) {
+    if (!enableVoice || !voiceMode || !("speechSynthesis" in window)) return
+    const clean = stripForSpeech(text)
+    if (!clean.trim()) return
+    const utterance = new SpeechSynthesisUtterance(clean)
+    utterance.lang = "es-AR"
+    const esVoice = voicesRef.current.find(v => v.lang?.startsWith("es"))
+    if (esVoice) utterance.voice = esVoice
+    if (isFirst) { utterance.onstart = stopSonar; utterance.onerror = stopSonar }
+    utteranceQueueRef.current.push(utterance) // referencias vivas para que el GC no corte el audio a mitad de la cola
+    window.speechSynthesis.speak(utterance)
+  }
+
+  // Va cortando el texto acumulado en oraciones completas (o en bloques de
+  // ~140 caracteres si una oracion viene muy larga sin puntuacion, para no
+  // trabar la lectura). Con final=true (fin del stream) tambien devuelve
+  // el resto que haya quedado sin puntuacion de cierre.
+  function extractReadyChunks(fullText, fromIndex, final = false) {
+    const tail = fullText.slice(fromIndex)
+    const chunks = []
+    let cursor = 0
+    const re = /[^.!?\n]+[.!?\n]+/g
+    let m
+    while ((m = re.exec(tail)) !== null) {
+      chunks.push(tail.slice(cursor, re.lastIndex))
+      cursor = re.lastIndex
+    }
+    while (tail.length - cursor > 140) {
+      let cut = tail.lastIndexOf(" ", cursor + 140)
+      if (cut <= cursor) cut = cursor + 140
+      chunks.push(tail.slice(cursor, cut))
+      cursor = cut
+    }
+    if (final && tail.length > cursor) {
+      chunks.push(tail.slice(cursor))
+      cursor = tail.length
+    }
+    return { chunks, newIndex: fromIndex + cursor }
+  }
+
   function toggleVoiceMode() {
     window.speechSynthesis?.cancel()
     stopSonar()
@@ -363,7 +409,11 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
 
     setMessages(prev => [...prev, { role: "user", content: text, attachment: localAttachment }])
     setLoading(true); onLoadingChange?.(true)
-    if (voiceMode) startSonar()
+    if (voiceMode) {
+      window.speechSynthesis?.cancel() // limpiar cualquier resto de la cola de un mensaje anterior
+      utteranceQueueRef.current = []
+      startSonar()
+    }
 
     const controller = new AbortController()
     abortRef.current = controller
@@ -402,26 +452,54 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
 
       let accumulated = ""
       let started = false
+      let spokenLen = 0
+      let chunkCount = 0
 
-      await streamChat(finalMessage, sessionId, controller, (token) => {
-        accumulated += token
+      const revealUpTo = (len) => {
+        const shown = accumulated.slice(0, len)
         if (!started) {
           started = true
           setIsStreaming(true)
-          setMessages(prev => [...prev, { role: "assistant", content: accumulated }])
+          setMessages(prev => [...prev, { role: "assistant", content: shown }])
         } else {
           setMessages(prev => {
             const msgs = [...prev]
-            msgs[msgs.length - 1] = { role: "assistant", content: accumulated }
+            msgs[msgs.length - 1] = { role: "assistant", content: shown }
             return msgs
           })
+        }
+      }
+
+      await streamChat(finalMessage, sessionId, controller, (token) => {
+        accumulated += token
+        if (enableVoice && voiceMode) {
+          // Oracion completa -> se manda a hablar primero, y recien esa parte
+          // se revela en pantalla (asi el audio siempre va un paso adelante).
+          const { chunks, newIndex } = extractReadyChunks(accumulated, spokenLen)
+          if (chunks.length) {
+            for (const chunk of chunks) { speakChunk(chunk, chunkCount === 0); chunkCount++ }
+            spokenLen = newIndex
+            revealUpTo(spokenLen)
+          }
+        } else {
+          revealUpTo(accumulated.length)
         }
       }, setAgentStatus, setPedido, (s) => setSuggestions(s), undefined, (profile) => {
         setRiskProfile(profile)
         if (profile.resolucion != null) setRetention(profile.resolucion)
         if (profile.sentimiento != null) setSentimentPts(prev => [...prev, profile.sentimiento])
       })
-      speakText(accumulated)
+
+      if (enableVoice && voiceMode) {
+        // Oracion final sin punto de cierre (o resto sin puntuacion) -> se lee igual
+        const { chunks, newIndex } = extractReadyChunks(accumulated, spokenLen, true)
+        if (chunks.length) {
+          for (const chunk of chunks) { speakChunk(chunk, chunkCount === 0); chunkCount++ }
+          spokenLen = newIndex
+          revealUpTo(spokenLen)
+        }
+        if (chunkCount === 0) stopSonar() // respuesta vacia: nada para hablar, no dejar el sonido de espera colgado
+      }
     } catch (e) {
       stopSonar()
       if (e.name !== "AbortError")
