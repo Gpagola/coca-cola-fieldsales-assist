@@ -695,9 +695,8 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
                 key={i}
                 className="suggestion-btn"
                 onClick={() => {
-                  setInput(s)
                   setSuggestions([])
-                  textareaRef.current?.focus()
+                  sendMessage(s)
                 }}
               >
                 {s}
