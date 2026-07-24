@@ -761,6 +761,16 @@
     border-left: none;
     border-top: 1px solid var(--border);
   }
+
+  /* Sugerencias: una fila que scrollea horizontal en vez de wrappear a varias lineas. */
+  .suggestions {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .suggestions::-webkit-scrollbar { display: none; }
+  .suggestion-btn { flex-shrink: 0; }
 }
 
 /* ── Modo de voz (texto ⇄ audio) ── */
