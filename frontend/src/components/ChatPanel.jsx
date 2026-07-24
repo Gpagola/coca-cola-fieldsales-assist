@@ -43,16 +43,61 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
   const voicesRef        = useRef([])
   const utteranceRef     = useRef(null)
   const speechUnlockedRef = useRef(false)
+  const audioCtxRef      = useRef(null)
+  const sonarIntervalRef = useRef(null)
+  const sonarTimeoutRef  = useRef(null)
 
   // iOS Safari solo deja sonar speechSynthesis.speak() si se llama dentro de
   // (o muy cerca de) un gesto real del usuario. Nuestro speak() real llega
   // varios segundos despues (grabar -> transcribir -> enviar -> stream de la
   // respuesta), asi que "desbloqueamos" el motor con un toque real apenas
-  // el vendedor entra en modo audio o toca grabar.
+  // el vendedor entra en modo audio o toca grabar. Aprovechamos el mismo
+  // gesto para crear/despertar el AudioContext del sonido de "sonar".
   function unlockSpeech() {
+    getAudioCtx()
     if (speechUnlockedRef.current || !("speechSynthesis" in window)) return
     speechUnlockedRef.current = true
     window.speechSynthesis.speak(new SpeechSynthesisUtterance(" "))
+  }
+
+  function getAudioCtx() {
+    const Ctx = window.AudioContext || window.webkitAudioContext
+    if (!Ctx) return null
+    if (!audioCtxRef.current) audioCtxRef.current = new Ctx()
+    if (audioCtxRef.current.state === "suspended") audioCtxRef.current.resume()
+    return audioCtxRef.current
+  }
+
+  function playSonarPing() {
+    const ctx = getAudioCtx()
+    if (!ctx) return
+    const osc  = ctx.createOscillator()
+    const gain = ctx.createGain()
+    osc.type = "sine"
+    osc.frequency.setValueAtTime(880, ctx.currentTime)
+    osc.frequency.exponentialRampToValueAtTime(600, ctx.currentTime + 0.3)
+    gain.gain.setValueAtTime(0.0001, ctx.currentTime)
+    gain.gain.exponentialRampToValueAtTime(0.2, ctx.currentTime + 0.02)
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.4)
+    osc.connect(gain)
+    gain.connect(ctx.destination)
+    osc.start()
+    osc.stop(ctx.currentTime + 0.4)
+  }
+
+  // Sonido tipo sonar en loop mientras se procesa el mensaje de voz y hasta
+  // que arranca la lectura en voz alta de la respuesta (cubre el silencio de
+  // "pensando" + streaming + el pequeno delta antes de que hable el TTS).
+  function startSonar() {
+    if (!enableVoice || !voiceMode || sonarIntervalRef.current) return
+    playSonarPing()
+    sonarIntervalRef.current = setInterval(playSonarPing, 1200)
+    sonarTimeoutRef.current = setTimeout(stopSonar, 20000) // resguardo por si algo no llama a stopSonar
+  }
+
+  function stopSonar() {
+    if (sonarIntervalRef.current) { clearInterval(sonarIntervalRef.current); sonarIntervalRef.current = null }
+    if (sonarTimeoutRef.current)  { clearTimeout(sonarTimeoutRef.current); sonarTimeoutRef.current = null }
   }
 
   async function streamChat(message, sessionId, controller, onToken, onStatus, onPedido, onSuggestions, onCierre, onRiskProfile) {
@@ -215,6 +260,8 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
     return () => {
       window.speechSynthesis.onvoiceschanged = null
       window.speechSynthesis.cancel()
+      stopSonar()
+      audioCtxRef.current?.close()
     }
   }, [enableVoice])
 
@@ -230,18 +277,24 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
   }
 
   function speakText(text) {
-    if (!enableVoice || !voiceMode || !("speechSynthesis" in window) || !text.trim()) return
+    if (!enableVoice || !voiceMode || !("speechSynthesis" in window) || !text.trim()) {
+      stopSonar()
+      return
+    }
     window.speechSynthesis.cancel()
     const utterance = new SpeechSynthesisUtterance(stripForSpeech(text))
     utterance.lang = "es-AR"
     const esVoice = voicesRef.current.find(v => v.lang?.startsWith("es"))
     if (esVoice) utterance.voice = esVoice
+    utterance.onstart = stopSonar // el sonar suena hasta el instante en que arranca a hablar
+    utterance.onerror = stopSonar
     utteranceRef.current = utterance // algunos navegadores cortan el audio si el objeto queda sin referencias y el GC lo recolecta a mitad de la lectura
     window.speechSynthesis.speak(utterance)
   }
 
   function toggleVoiceMode() {
     window.speechSynthesis?.cancel()
+    stopSonar()
     if (!voiceMode) unlockSpeech()
     if (voiceMode && recState !== "idle") {
       mediaRecorderRef.current?.stop()
@@ -324,6 +377,7 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
 
     setMessages(prev => [...prev, { role: "user", content: text, attachment: localAttachment }])
     setLoading(true); onLoadingChange?.(true)
+    if (voiceMode) startSonar()
 
     const controller = new AbortController()
     abortRef.current = controller
@@ -383,6 +437,7 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
       })
       speakText(accumulated)
     } catch (e) {
+      stopSonar()
       if (e.name !== "AbortError")
         setMessages(prev => [...prev, { role: "assistant", content: `⚠️ Error: ${e.message}` }])
     } finally {
@@ -398,6 +453,7 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
 
   function handleStop() {
     abortRef.current?.abort()
+    stopSonar()
   }
 
   function handleKeyDown(e) {
