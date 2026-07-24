@@ -41,6 +41,19 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
   const audioChunksRef   = useRef([])
   const mediaStreamRef   = useRef(null)
   const voicesRef        = useRef([])
+  const utteranceRef     = useRef(null)
+  const speechUnlockedRef = useRef(false)
+
+  // iOS Safari solo deja sonar speechSynthesis.speak() si se llama dentro de
+  // (o muy cerca de) un gesto real del usuario. Nuestro speak() real llega
+  // varios segundos despues (grabar -> transcribir -> enviar -> stream de la
+  // respuesta), asi que "desbloqueamos" el motor con un toque real apenas
+  // el vendedor entra en modo audio o toca grabar.
+  function unlockSpeech() {
+    if (speechUnlockedRef.current || !("speechSynthesis" in window)) return
+    speechUnlockedRef.current = true
+    window.speechSynthesis.speak(new SpeechSynthesisUtterance(" "))
+  }
 
   async function streamChat(message, sessionId, controller, onToken, onStatus, onPedido, onSuggestions, onCierre, onRiskProfile) {
     const res = await fetch(`${API}/chat`, {
@@ -223,11 +236,13 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
     utterance.lang = "es-AR"
     const esVoice = voicesRef.current.find(v => v.lang?.startsWith("es"))
     if (esVoice) utterance.voice = esVoice
+    utteranceRef.current = utterance // algunos navegadores cortan el audio si el objeto queda sin referencias y el GC lo recolecta a mitad de la lectura
     window.speechSynthesis.speak(utterance)
   }
 
   function toggleVoiceMode() {
     window.speechSynthesis?.cancel()
+    if (!voiceMode) unlockSpeech()
     if (voiceMode && recState !== "idle") {
       mediaRecorderRef.current?.stop()
       mediaStreamRef.current?.getTracks().forEach(t => t.stop())
@@ -237,6 +252,7 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
   }
 
   async function startRecording() {
+    unlockSpeech()
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       mediaStreamRef.current = stream
