@@ -9,6 +9,7 @@ import re
 import uuid
 import base64
 import json
+import unicodedata
 from flask import Flask, request, jsonify, Response, stream_with_context
 from flask_cors import CORS
 from dotenv import load_dotenv
@@ -364,6 +365,40 @@ def upload_document():
         return jsonify({"error": str(e)}), 500
 
 
+# Frases que Whisper "alucina" cuando el audio esta en silencio o sin habla
+# clara (provienen de sus datos de entrenamiento: subtitulos de YouTube). Si la
+# transcripcion se reduce a una de estas, la descartamos para no mandar un
+# mensaje fantasma al agente.
+_WHISPER_ALUCINACIONES = {
+    "subtitulos realizados por la comunidad de amara.org",
+    "subtitulado por la comunidad de amara.org",
+    "subtitulos por la comunidad de amara.org",
+    "mas informacion en www.alimmenta.com",
+    "gracias por ver el video",
+    "gracias por ver el video.",
+    "gracias.",
+    "gracias",
+    "amara.org",
+    "subscribe to our channel",
+    "thanks for watching",
+    "thank you.",
+    "you",
+}
+
+
+def _es_transcripcion_valida(texto):
+    """False si la transcripcion esta vacia o es una alucinacion tipica de silencio."""
+    limpio = texto.strip()
+    if not limpio:
+        return False
+    # Normalizar: minusculas + sin tildes para comparar contra la lista.
+    normal = unicodedata.normalize("NFKD", limpio.lower())
+    normal = "".join(c for c in normal if not unicodedata.combining(c)).strip()
+    if "amara.org" in normal:
+        return False
+    return normal not in _WHISPER_ALUCINACIONES
+
+
 @app.route("/api/transcribe", methods=["POST"])
 def transcribe_audio():
     """
@@ -382,7 +417,8 @@ def transcribe_audio():
             file=(audio_file.filename or "recording.webm", audio_file.read(), audio_file.mimetype),
             language="es",
         )
-        return jsonify({"text": transcript.text})
+        texto = transcript.text if _es_transcripcion_valida(transcript.text) else ""
+        return jsonify({"text": texto})
     except Exception as e:
         print(f"ERROR en /api/transcribe: {e}")
         return jsonify({"error": str(e)}), 500
