@@ -241,13 +241,11 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
       .trim()
   }
 
-  // Habla un fragmento (oracion) apenas esta listo, en vez de esperar a que
-  // termine toda la respuesta -- asi el audio arranca antes y ese mismo
-  // fragmento recien despues se revela en pantalla (ver extractReadyChunks).
-  // La voz la genera el backend con OpenAI TTS (mucho mas natural que la
-  // nativa del navegador). Los fragmentos se encolan en speechQueueRef para
-  // reproducirse en orden, pero se piden (fetch) sin esperar a que el
-  // anterior termine de sonar, asi el siguiente ya esta listo cuando llega su turno.
+  // Habla un fragmento de texto. La voz la genera el backend con OpenAI TTS
+  // (mucho mas natural que la nativa del navegador). Los fragmentos se encolan
+  // en speechQueueRef para reproducirse en orden, pero se piden (fetch) sin
+  // esperar a que el anterior termine de sonar, asi el siguiente ya esta listo
+  // cuando llega su turno.
   function speakChunk(text) {
     if (!enableVoice || !voiceMode) return
     const clean = stripForSpeech(text)
@@ -278,31 +276,17 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
     })
   }
 
-  // Va cortando el texto acumulado en oraciones completas (o en bloques de
-  // ~140 caracteres si una oracion viene muy larga sin puntuacion, para no
-  // trabar la lectura). Con final=true (fin del stream) tambien devuelve
-  // el resto que haya quedado sin puntuacion de cierre.
-  function extractReadyChunks(fullText, fromIndex, final = false) {
-    const tail = fullText.slice(fromIndex)
-    const chunks = []
-    let cursor = 0
-    const re = /[^.!?\n]+[.!?\n]+/g
-    let m
-    while ((m = re.exec(tail)) !== null) {
-      chunks.push(tail.slice(cursor, re.lastIndex))
-      cursor = re.lastIndex
-    }
-    while (tail.length - cursor > 140) {
-      let cut = tail.lastIndexOf(" ", cursor + 140)
-      if (cut <= cursor) cut = cursor + 140
-      chunks.push(tail.slice(cursor, cut))
-      cursor = cut
-    }
-    if (final && tail.length > cursor) {
-      chunks.push(tail.slice(cursor))
-      cursor = tail.length
-    }
-    return { chunks, newIndex: fromIndex + cursor }
+  // Indice justo despues del final de la primera oracion (. ! ? o salto de
+  // linea) a partir de `from`, o -1 si todavia no hay una oracion completa.
+  // Solo se usa para arrancar a hablar la PRIMERA oracion apenas esta lista
+  // (arranque rapido); el resto de la respuesta se habla despues en una sola
+  // pieza, para que la puntuacion y las pausas fluyan naturalmente en vez de
+  // partirse en clips sueltos.
+  function firstSentenceEnd(text, from) {
+    const m = /[.!?\n]/g
+    m.lastIndex = from
+    const found = m.exec(text)
+    return found ? found.index + 1 : -1
   }
 
   function toggleVoiceMode() {
@@ -430,6 +414,7 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
       let accumulated = ""
       let started = false
       let spokenLen = 0
+      let firstSpoken = false
 
       const revealUpTo = (len) => {
         const shown = accumulated.slice(0, len)
@@ -448,17 +433,17 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
 
       await streamChat(finalMessage, sessionId, controller, (token) => {
         accumulated += token
-        if (enableVoice && voiceMode) {
-          // Oracion completa -> se manda a hablar primero, y recien esa parte
-          // se revela en pantalla (asi el audio siempre va un paso adelante).
-          const { chunks, newIndex } = extractReadyChunks(accumulated, spokenLen)
-          if (chunks.length) {
-            for (const chunk of chunks) speakChunk(chunk)
-            spokenLen = newIndex
-            revealUpTo(spokenLen)
+        revealUpTo(accumulated.length) // el texto se muestra normal a medida que llega
+        // Voz: hablar SOLO la primera oracion apenas esta lista (arranque
+        // rapido). El resto se habla junto al final (ver despues del stream),
+        // para que la puntuacion y las pausas fluyan naturales sin cortes.
+        if (enableVoice && voiceMode && !firstSpoken) {
+          const end = firstSentenceEnd(accumulated, 0)
+          if (end > 0) {
+            speakChunk(accumulated.slice(0, end))
+            spokenLen = end
+            firstSpoken = true
           }
-        } else {
-          revealUpTo(accumulated.length)
         }
       }, setAgentStatus, setPedido, (s) => setSuggestions(s), undefined, (profile) => {
         setRiskProfile(profile)
@@ -467,13 +452,10 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
       })
 
       if (enableVoice && voiceMode) {
-        // Oracion final sin punto de cierre (o resto sin puntuacion) -> se lee igual
-        const { chunks, newIndex } = extractReadyChunks(accumulated, spokenLen, true)
-        if (chunks.length) {
-          for (const chunk of chunks) speakChunk(chunk)
-          spokenLen = newIndex
-          revealUpTo(spokenLen)
-        }
+        // Todo el resto de la respuesta en una sola pieza (una sola llamada a
+        // TTS) -> puntuacion y entonacion continuas, sin clips entrecortados.
+        const rest = accumulated.slice(spokenLen)
+        if (rest.trim()) speakChunk(rest)
       }
     } catch (e) {
       if (voiceMode) stopSpeech()
