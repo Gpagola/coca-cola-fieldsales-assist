@@ -41,7 +41,7 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
   const audioChunksRef   = useRef([])
   const mediaStreamRef   = useRef(null)
   const speechQueueRef   = useRef(Promise.resolve())
-  const currentSpeechAudioRef = useRef(null)
+  const ttsAudioRef      = useRef(null)
 
   // Wav silencioso minimo, usado solo para "desbloquear" el autoplay de
   // <audio> en iOS Safari (requiere un play() real dentro de un gesto del
@@ -49,13 +49,27 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
   // (grabar -> transcribir -> enviar -> stream de la respuesta).
   const SILENT_AUDIO = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA="
 
+  // Un UNICO elemento <audio> reutilizado para toda la voz. iOS Safari solo
+  // permite reproducir sin gesto del usuario un elemento que ya fue
+  // "desbloqueado" antes con un play() dentro de un gesto; crear un
+  // new Audio() por cada oracion hacia que iOS bloqueara intermitentemente
+  // (algunas respuestas sonaban y otras no). Reusando el mismo elemento
+  // desbloqueado y solo cambiando su .src, la reproduccion es confiable.
+  function getTtsAudio() {
+    if (!ttsAudioRef.current) ttsAudioRef.current = new Audio()
+    return ttsAudioRef.current
+  }
+
   function unlockAudio() {
-    new Audio(SILENT_AUDIO).play().catch(() => {})
+    const audio = getTtsAudio()
+    audio.src = SILENT_AUDIO
+    audio.play().then(() => audio.pause()).catch(() => {})
   }
 
   // Corta lo que se este reproduciendo y vacia los turnos de habla pendientes.
   function stopSpeech() {
-    currentSpeechAudioRef.current?.pause()
+    const audio = ttsAudioRef.current
+    if (audio) { audio.onended = null; audio.onerror = null; audio.pause() }
     speechQueueRef.current = Promise.resolve()
   }
 
@@ -255,11 +269,11 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
   function playAudioBlob(blob) {
     return new Promise((resolve) => {
       const url = URL.createObjectURL(blob)
-      const audio = new Audio(url)
-      currentSpeechAudioRef.current = audio
-      const cleanup = () => { URL.revokeObjectURL(url); resolve() }
+      const audio = getTtsAudio() // reusar el elemento ya desbloqueado (ver getTtsAudio)
+      const cleanup = () => { URL.revokeObjectURL(url); audio.onended = null; audio.onerror = null; resolve() }
       audio.onended = cleanup
       audio.onerror = cleanup
+      audio.src = url
       audio.play().catch(cleanup)
     })
   }

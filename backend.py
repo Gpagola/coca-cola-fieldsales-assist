@@ -443,8 +443,10 @@ def speak_text():
             model="gpt-4o-mini-tts",
             voice="nova",
             input=text,
+            speed=1.25,
             instructions="Hablá en español rioplatense, con tono profesional, calido y cercano, "
-                         "como un coach de ventas que acompaña a un vendedor en terreno.",
+                         "y a un ritmo agil y dinamico, como un coach de ventas que acompaña a "
+                         "un vendedor en terreno.",
         )
         return Response(response.read(), mimetype="audio/mpeg")
     except Exception as e:
