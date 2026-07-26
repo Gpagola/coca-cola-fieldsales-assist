@@ -20,7 +20,7 @@ jobs:
       - name: Compilar frontend
         working-directory: frontend
         env:
-          VITE_API_URL: /SMART-Cocacola/api
+          VITE_API_URL: /SMART-assistB2B/cocacola/api
         run: |
           npm install
           npm run build -- --mode production

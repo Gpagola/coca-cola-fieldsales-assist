@@ -2,7 +2,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
 export default defineConfig(({ mode }) => ({
-  base: mode === 'production' ? '/SMART-Cocacola/' : '/',
+  base: mode === 'production' ? '/SMART-assistB2B/cocacola/' : '/',
   plugins: [react()],
   server: {
     proxy: {
