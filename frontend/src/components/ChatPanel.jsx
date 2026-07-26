@@ -160,7 +160,7 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
         role: "assistant",
         content: initialClienteCodigo
           ? `¡Hola! Soy tu asistente de venta en terreno. Ya tengo cargada la cuenta ${initialClienteCodigo}, dame un segundo para traer su ficha.`
-          : "¡Hola! Soy tu asistente de venta en terreno de Coca-Cola. Decime el código de cliente (CLI-XXXX) de la cuenta con la que vas a trabajar."
+          : "¡Hola! Soy tu asistente de venta en terreno de Distribuidora Pampa. Decime el código de cliente (CLI-XXXX) de la cuenta con la que vas a trabajar."
       }])
 
       if (initialClienteCodigo) {

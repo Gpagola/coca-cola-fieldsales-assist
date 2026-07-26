@@ -2,7 +2,7 @@ import { useState, useEffect } from "react"
 import "./Header.css"
 
 const API = import.meta.env.VITE_API_URL || "/api"
-const FALLBACK_LOGO = `${import.meta.env.BASE_URL}logos/logo.jpg`
+const FALLBACK_LOGO = `${import.meta.env.BASE_URL}logos/logo.png`
 
 function resolveLogoUrl(url) {
   if (!url) return FALLBACK_LOGO

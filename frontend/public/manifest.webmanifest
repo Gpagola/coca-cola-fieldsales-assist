@@ -1,7 +1,7 @@
 {
-  "name": "Coca-Cola Field Sales Assist",
-  "short_name": "CC Field Sales",
-  "description": "Asistente de venta en terreno para Coca-Cola.",
+  "name": "Distribuidora Pampa — Field Sales Assist",
+  "short_name": "Pampa Field Sales",
+  "description": "Asistente de venta en terreno para Distribuidora Pampa.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

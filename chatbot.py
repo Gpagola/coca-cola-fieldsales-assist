@@ -375,10 +375,11 @@ def consultar_historico_pedidos(codigo_cliente: str, limite: int = 10) -> str:
 
 @tool
 def buscar_producto(nombre_o_categoria: str) -> str:
-    """Busca productos del catalogo Coca-Cola por nombre o categoria (gaseosas, aguas,
-    saborizadas, jugos, isotonicas, energizantes). Devuelve SKU, nombre, categoria,
-    presentacion, formato, litros y precio de lista. Usar cuando el vendedor pregunte
-    por disponibilidad, formato o precio de un producto."""
+    """Busca productos del catalogo de Distribuidora Pampa por nombre o categoria
+    (almacen, galletitas_snacks, bebidas, lacteos, limpieza, perfumeria). Devuelve
+    SKU, nombre, categoria, presentacion (unidad/bulto), formato, volumen y precio
+    de lista. Usar cuando el vendedor pregunte por disponibilidad, formato o precio
+    de un producto."""
     q = f"%{nombre_o_categoria.strip()}%"
     conn = get_conn()
     try:
@@ -404,7 +405,7 @@ def buscar_producto(nombre_o_categoria: str) -> str:
     for sku, nom, cat, pres, formato, litros, precio, desc in rows:
         out.append(
             f"\n- {nom} ({cat}) — SKU {sku}\n"
-            f"  Presentacion: {pres} | Formato: {formato} ({float(litros):.3f} L)\n"
+            f"  Presentacion: {pres} | Formato: {formato} (vol. {float(litros):.3f} kg/L)\n"
             f"  Precio de lista: {float(precio):.2f}\n"
             f"  {desc or ''}"
         )
@@ -640,7 +641,7 @@ _ESTADOS_PEDIDO_ACTIVOS_PARA_CANCELAR = {"solicitado", "en_revision"}
 @tool
 def crear_pedido(codigo_cliente: str, items_json: str, condicion_pago: str, notas: str = "") -> str:
     """Registra un pedido nuevo para una cuenta. `items_json` es un string JSON con una lista
-    de items, ej: '[{"producto": "Coca-Cola Original 1.5L", "cantidad": 24}]' (el producto se
+    de items, ej: '[{"producto": "Aceite de Girasol Pampa 900ml", "cantidad": 24}]' (el producto se
     busca por nombre o SKU). El descuento se calcula automaticamente consultando la politica
     aplicable (canal de la cuenta + condicion de pago + volumen total). El pedido SIEMPRE
     queda registrado en estado 'solicitado', pendiente de revision de backoffice — nunca se
@@ -1061,7 +1062,7 @@ def run_agent(session_id: str):
 # ── Punto de entrada ──────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Asistente de fuerza de venta en terreno — Coca-Cola")
+    parser = argparse.ArgumentParser(description="Asistente de fuerza de venta en terreno — Distribuidora Pampa")
     parser.add_argument("--session", type=str, default="default", help="ID de sesion")
     args = parser.parse_args()
 

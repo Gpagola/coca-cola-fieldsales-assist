@@ -109,7 +109,7 @@ export default function App() {
                 )}
               </svg>
             </button>
-            <span className="sidebar-title">Coca-Cola Field Sales → Guiado por Ontologías</span>
+            <span className="sidebar-title">Distribuidora Pampa → Guiado por Ontologías</span>
           </div>
         )}
         <div className="app-col">

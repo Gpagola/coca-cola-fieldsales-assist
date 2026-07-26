@@ -1,5 +1,5 @@
 """
-Backend Flask — Asistente de Fuerza de Venta en Terreno (Coca-Cola)
+Backend Flask — Asistente de Fuerza de Venta en Terreno (Distribuidora Pampa)
 Expone el agente LangGraph como API REST para el frontend React.
 """
 
@@ -105,7 +105,7 @@ def _generar_sugerencias_rapidas(user_msg: str, assistant_msg: str) -> list:
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": (
-                    "Eres una ayuda en una app de asistente de venta en terreno para Coca-Cola. "
+                    "Eres una ayuda en una app de asistente de venta en terreno para Distribuidora Pampa. "
                     "El usuario es el vendedor. Dado el ultimo mensaje del asistente, "
                     "genera 3-4 frases cortas (max 6 palabras) que el vendedor podria "
                     "escribir como respuesta o siguiente pregunta. "
@@ -456,12 +456,12 @@ def speak_text():
 
 def _interpretar_con_vision(client, texto_plano=None, b64_imagen=None, b64_pdf=None, mime="image/jpeg"):
     """Llama a GPT-4o para interpretar el documento y clasificarlo."""
-    instruccion = """Eres un asistente de fuerza de venta en terreno de Coca-Cola.
+    instruccion = """Eres un asistente de fuerza de venta en terreno de Distribuidora Pampa.
 Analiza el documento adjunto e identifica:
-1. TIPO DE DOCUMENTO: es una foto de exhibidor/heladera, una orden de compra escaneada, un comprobante de pago, u otro?
+1. TIPO DE DOCUMENTO: es una foto de gondola/exhibicion, una orden de compra escaneada, un comprobante de pago, u otro?
 2. DATOS CLAVE segun el tipo:
    - Si es orden de compra/comprobante: cuenta o cliente, fecha, productos, cantidades, total
-   - Si es foto de exhibidor/heladera: estado aparente (surtido, vacio, con competencia), SKUs visibles si se distinguen
+   - Si es foto de gondola/exhibicion: estado aparente (surtido, vacio, con competencia), SKUs visibles si se distinguen
    - Otro: resumen del contenido relevante para la consulta
 3. RECOMENDACION: que deberia hacer el asistente con esta informacion
 

@@ -8,7 +8,7 @@ export default function MobileChatView({ theme, toggleTheme, onLoadingChange }) 
   return (
     <div className="mobile-shell">
       <div className="mobile-topbar">
-        <span className="mobile-topbar-title">Coca-Cola Field Sales</span>
+        <span className="mobile-topbar-title">Distribuidora Pampa</span>
         <button
           className={`nav-theme-switch ${theme === "dark" ? "dark" : "light"}`}
           onClick={toggleTheme}

@@ -1,5 +1,5 @@
 """
-Autopilot — Simulador de vendedor + Evaluador de conversaciones (COCA-COLA FIELD SALES)
+Autopilot — Simulador de vendedor + Evaluador de conversaciones (DISTRIBUIDORA PAMPA FIELD SALES)
 Corre conversaciones automaticas contra el agente de venta en terreno para hacer pruebas.
 El "cliente" simulado aqui representa al VENDEDOR que conversa DIRECTAMENTE con el asistente
 (no hay ejecutivo intermediario) — es quien realmente usa el chat para preparar sus visitas.
@@ -171,7 +171,7 @@ def _load_global_ontologia(nombre: str, fallback: str) -> str:
     return row[0] if row else fallback
 
 
-SYSTEM_CLIENTE_FALLBACK = """Eres un vendedor de fuerza de venta en terreno de Coca-Cola que esta usando el
+SYSTEM_CLIENTE_FALLBACK = """Eres un vendedor de fuerza de venta en terreno de Distribuidora Pampa que esta usando el
 asistente para preparar una visita o resolver algo de una cuenta. Hablas
 DIRECTAMENTE con el asistente (no hay otro intermediario).
 
@@ -241,7 +241,7 @@ def _generar_mensaje_cliente(historial: list, caso: dict, primer_turno: bool = F
 # ── Evaluador ─────────────────────────────────────────────────────────────────
 
 SYSTEM_EVALUADOR_FALLBACK = """Eres un experto en calidad de procesos comerciales para fuerza de venta de
-Coca-Cola. Evaluaras una conversacion entre un asistente de IA de venta en
+Distribuidora Pampa. Evaluaras una conversacion entre un asistente de IA de venta en
 terreno y un vendedor.
 
 Debes evaluar en 4 dimensiones y dar recomendaciones concretas de mejora para

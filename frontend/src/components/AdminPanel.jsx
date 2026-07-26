@@ -384,7 +384,7 @@ export default function AdminPanel({ onSaved, width }) {
           <div className="admin-expand-modal">
             <div className="admin-expand-body">
               <div className="admin-expand-sidebar">
-                <span className="sidebar-title">Coca-Cola Field Sales → Guiado por Ontologías</span>
+                <span className="sidebar-title">Distribuidora Pampa → Guiado por Ontologías</span>
               </div>
               <div className="admin-expand-main">
                 <div className="admin-expand-header">
