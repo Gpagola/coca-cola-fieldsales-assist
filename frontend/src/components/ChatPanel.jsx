@@ -294,10 +294,18 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
     unlockAudio()
     stopSpeech() // si el asistente estaba hablando, cortar de inmediato y pasar a escuchar
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      // Mono + cancelacion de ruido: mejor para reconocimiento de voz y mas liviano.
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
+      })
       mediaStreamRef.current = stream
       const mimeType = ["audio/webm", "audio/mp4", "audio/ogg"].find(t => MediaRecorder.isTypeSupported(t)) || ""
-      const rec = new MediaRecorder(stream, mimeType ? { mimeType } : undefined)
+      // Bitrate bajo (24 kbps): la voz se entiende perfecto y el archivo pesa
+      // una fraccion, asi sube mucho mas rapido en redes moviles (era el cuello
+      // de botella real del speech-to-text, no el modelo).
+      const recOpts = { audioBitsPerSecond: 24000 }
+      if (mimeType) recOpts.mimeType = mimeType
+      const rec = new MediaRecorder(stream, recOpts)
       audioChunksRef.current = []
       rec.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data) }
       rec.onstop = () => {
