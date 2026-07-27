@@ -819,10 +819,26 @@
 .voice-record-btn:hover:not(:disabled) { opacity: 0.85; }
 .voice-record-btn:disabled { opacity: 0.45; cursor: default; }
 
-.voice-record-btn.recording {
+/* Escuchando: verde/acento pulsante (te esta oyendo). */
+.voice-record-btn.listening {
   background: #d9364a;
   color: #fff;
   animation: pulse-slow 1.4s ease-in-out infinite;
+}
+
+/* Respondiendo o transcribiendo: activo pero mas tenue. */
+.voice-record-btn.responding,
+.voice-record-btn.sending {
+  background: var(--send-bg);
+  color: var(--send-text);
+  animation: pulse-slow 1.8s ease-in-out infinite;
+}
+
+/* En pausa / muteado: apagado. */
+.voice-record-btn.muted {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
 }
 
 .voice-status-label {
