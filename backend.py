@@ -174,9 +174,22 @@ def chat():
     data = request.get_json()
     message    = data.get("message", "").strip()
     session_id = data.get("session_id", "")
+    voice_mode = bool(data.get("voice_mode"))
 
     if not message or not session_id:
         return jsonify({"error": "message y session_id son requeridos"}), 400
+
+    # En modo voz la respuesta la ESCUCHA el vendedor: tiene que ser corta y
+    # directa, sin listas ni markdown. Se lo indicamos al agente en este turno.
+    if voice_mode:
+        message = (
+            message
+            + "\n\n[MODO VOZ — la respuesta se va a ESCUCHAR en audio, no leer. "
+            "Responde en 1 o 2 oraciones, breve y directo, en tono conversacional. "
+            "Prohibido usar listas, vinetas, numeraciones, tablas o markdown. "
+            "Da solo lo esencial (el dato o el siguiente paso); si hay mucho que "
+            "detallar, resumi y ofrece ampliar si el vendedor lo pide.]"
+        )
 
     agent  = get_agent()
     config = {"configurable": {"thread_id": session_id}}
@@ -443,10 +456,11 @@ def speak_text():
             model="gpt-4o-mini-tts",
             voice="nova",
             input=text,
-            speed=1.25,
-            instructions="Hablá en español rioplatense, con tono profesional, calido y cercano, "
-                         "y a un ritmo agil y dinamico, como un coach de ventas que acompaña a "
-                         "un vendedor en terreno.",
+            speed=1.2,
+            instructions="Hablá en español rioplatense de Argentina, con acento porteño "
+                         "natural (voseo, entonacion argentina). Tono formal y profesional, "
+                         "como un asesor comercial serio y confiable; claro y bien articulado, "
+                         "cordial pero sin excesos de calidez ni informalidad. Ritmo agil.",
         )
         return Response(response.read(), mimetype="audio/mpeg")
     except Exception as e:
