@@ -77,7 +77,7 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
     const res = await fetch(`${API}/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message, session_id: sessionId }),
+      body: JSON.stringify({ message, session_id: sessionId, voice_mode: enableVoice && voiceMode }),
       signal: controller.signal,
     })
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
@@ -246,10 +246,13 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
   // en speechQueueRef para reproducirse en orden, pero se piden (fetch) sin
   // esperar a que el anterior termine de sonar, asi el siguiente ya esta listo
   // cuando llega su turno.
-  function speakChunk(text) {
-    if (!enableVoice || !voiceMode) return
+  // onStart (opcional) se dispara EN EL INSTANTE en que la voz empieza a
+  // reproducirse — lo usamos para recien ahi revelar el texto en pantalla,
+  // asi el audio va un paso adelante del texto en modo voz.
+  function speakChunk(text, onStart) {
+    if (!enableVoice || !voiceMode) { onStart?.(); return }
     const clean = stripForSpeech(text)
-    if (!clean.trim()) return
+    if (!clean.trim()) { onStart?.(); return }
     const fetchPromise = fetch(`${API}/speak`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -260,33 +263,20 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
     })
     speechQueueRef.current = speechQueueRef.current
       .then(() => fetchPromise)
-      .then(playAudioBlob)
-      .catch(() => {}) // si un fragmento falla, no trabar la cola de los siguientes
+      .then(blob => playAudioBlob(blob, onStart))
+      .catch(() => { onStart?.() }) // si falla el TTS, revelar el texto igual y no trabar la cola
   }
 
-  function playAudioBlob(blob) {
+  function playAudioBlob(blob, onStart) {
     return new Promise((resolve) => {
       const url = URL.createObjectURL(blob)
       const audio = getTtsAudio() // reusar el elemento ya desbloqueado (ver getTtsAudio)
       const cleanup = () => { URL.revokeObjectURL(url); audio.onended = null; audio.onerror = null; resolve() }
       audio.onended = cleanup
-      audio.onerror = cleanup
+      audio.onerror = () => { onStart?.(); cleanup() }
       audio.src = url
-      audio.play().catch(cleanup)
+      audio.play().then(() => onStart?.()).catch(() => { onStart?.(); cleanup() })
     })
-  }
-
-  // Indice justo despues del final de la primera oracion (. ! ? o salto de
-  // linea) a partir de `from`, o -1 si todavia no hay una oracion completa.
-  // Solo se usa para arrancar a hablar la PRIMERA oracion apenas esta lista
-  // (arranque rapido); el resto de la respuesta se habla despues en una sola
-  // pieza, para que la puntuacion y las pausas fluyan naturalmente en vez de
-  // partirse en clips sueltos.
-  function firstSentenceEnd(text, from) {
-    const m = /[.!?\n]/g
-    m.lastIndex = from
-    const found = m.exec(text)
-    return found ? found.index + 1 : -1
   }
 
   function toggleVoiceMode() {
@@ -413,8 +403,7 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
 
       let accumulated = ""
       let started = false
-      let spokenLen = 0
-      let firstSpoken = false
+      const voiceTurn = enableVoice && voiceMode
 
       const revealUpTo = (len) => {
         const shown = accumulated.slice(0, len)
@@ -433,29 +422,22 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
 
       await streamChat(finalMessage, sessionId, controller, (token) => {
         accumulated += token
-        revealUpTo(accumulated.length) // el texto se muestra normal a medida que llega
-        // Voz: hablar SOLO la primera oracion apenas esta lista (arranque
-        // rapido). El resto se habla junto al final (ver despues del stream),
-        // para que la puntuacion y las pausas fluyan naturales sin cortes.
-        if (enableVoice && voiceMode && !firstSpoken) {
-          const end = firstSentenceEnd(accumulated, 0)
-          if (end > 0) {
-            speakChunk(accumulated.slice(0, end))
-            spokenLen = end
-            firstSpoken = true
-          }
-        }
+        // En modo texto el texto aparece a medida que llega. En modo voz NO se
+        // muestra todavia: se revela recien cuando arranca el audio (abajo),
+        // asi la voz siempre va un paso adelante de la pantalla.
+        if (!voiceTurn) revealUpTo(accumulated.length)
       }, setAgentStatus, setPedido, (s) => setSuggestions(s), undefined, (profile) => {
         setRiskProfile(profile)
         if (profile.resolucion != null) setRetention(profile.resolucion)
         if (profile.sentimiento != null) setSentimentPts(prev => [...prev, profile.sentimiento])
       })
 
-      if (enableVoice && voiceMode) {
-        // Todo el resto de la respuesta en una sola pieza (una sola llamada a
-        // TTS) -> puntuacion y entonacion continuas, sin clips entrecortados.
-        const rest = accumulated.slice(spokenLen)
-        if (rest.trim()) speakChunk(rest)
+      if (voiceTurn) {
+        // Respuesta completa (en modo voz es breve) en una sola pieza de audio;
+        // el texto se revela en el instante en que empieza a sonar la voz.
+        const reveal = () => revealUpTo(accumulated.length)
+        if (stripForSpeech(accumulated).trim()) speakChunk(accumulated, reveal)
+        else reveal()
       }
     } catch (e) {
       if (voiceMode) stopSpeech()
