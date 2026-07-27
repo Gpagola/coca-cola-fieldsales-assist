@@ -10,6 +10,11 @@ const API = import.meta.env.VITE_API_URL || "/api"
 
 const ACCEPTED = ".pdf,.jpg,.jpeg,.png,.webp"
 
+// Deteccion de voz (VAD) del modo audio manos-libres.
+const VAD_THRESHOLD     = 0.02   // nivel RMS por encima del cual se considera que hay voz
+const VAD_SILENCE_MS    = 1100   // silencio sostenido que marca el fin de lo que dijiste -> envia
+const VAD_MIN_SPEECH_MS = 350    // duracion minima de voz para no enviar ruidos/golpes
+
 
 export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false, initialClienteCodigo = null, enableVoice = false }) {
   const [sessionId, setSessionId]   = useState(null)
@@ -29,7 +34,7 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
   const [retention, setRetention]         = useState(null)
   const [sentimentPts, setSentimentPts]   = useState([])
   const [voiceMode, setVoiceMode]         = useState(false)
-  const [recState, setRecState]           = useState("idle") // "idle" | "recording" | "transcribing"
+  const [voicePhase, setVoicePhase]       = useState("off") // off|listening|sending|responding|muted
   const bottomRef    = useRef(null)
   const textareaRef  = useRef(null)
   const abortRef     = useRef(null)
@@ -42,6 +47,18 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
   const mediaStreamRef   = useRef(null)
   const speechQueueRef   = useRef(Promise.resolve())
   const ttsAudioRef      = useRef(null)
+  const currentAudioCleanupRef = useRef(null)
+  // Modo voz manos-libres (VAD)
+  const audioCtxRef      = useRef(null)
+  const analyserRef      = useRef(null)
+  const vadRafRef        = useRef(0)
+  const listeningRef     = useRef(false)   // el VAD esta capturando activamente
+  const mutedRef         = useRef(false)   // el usuario puso pausa/mute
+  const voiceModeRef     = useRef(false)   // espejo de voiceMode para callbacks async
+  const speakingRef      = useRef(false)   // hay voz en curso (grabando)
+  const silenceStartRef  = useRef(0)
+  const speechStartRef   = useRef(0)
+  const recMimeRef       = useRef("")
 
   // Wav silencioso minimo, usado solo para "desbloquear" el autoplay de
   // <audio> en iOS Safari (requiere un play() real dentro de un gesto del
@@ -70,6 +87,7 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
   function stopSpeech() {
     const audio = ttsAudioRef.current
     if (audio) { audio.onended = null; audio.onerror = null; audio.pause() }
+    currentAudioCleanupRef.current?.() // resolver la reproduccion pendiente (para no colgar awaits)
     speechQueueRef.current = Promise.resolve()
   }
 
@@ -213,6 +231,17 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
     messagesRef.current = messages
   }, [messages])
 
+  // Al desmontar el chat, soltar microfono / AudioContext / loop de VAD y cortar audio.
+  useEffect(() => {
+    return () => {
+      voiceModeRef.current = false
+      if (vadRafRef.current) cancelAnimationFrame(vadRafRef.current)
+      try { mediaStreamRef.current?.getTracks().forEach(t => t.stop()) } catch (_) {}
+      try { audioCtxRef.current?.close() } catch (_) {}
+      const a = ttsAudioRef.current; if (a) a.pause()
+    }
+  }, [])
+
   useEffect(() => {
     pedidoRef.current = pedido
   }, [pedido])
@@ -271,7 +300,11 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
     return new Promise((resolve) => {
       const url = URL.createObjectURL(blob)
       const audio = getTtsAudio() // reusar el elemento ya desbloqueado (ver getTtsAudio)
-      const cleanup = () => { URL.revokeObjectURL(url); audio.onended = null; audio.onerror = null; resolve() }
+      const cleanup = () => {
+        URL.revokeObjectURL(url); audio.onended = null; audio.onerror = null
+        currentAudioCleanupRef.current = null; resolve()
+      }
+      currentAudioCleanupRef.current = cleanup
       audio.onended = cleanup
       audio.onerror = () => { onStart?.(); cleanup() }
       audio.src = url
@@ -279,54 +312,125 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
     })
   }
 
-  function toggleVoiceMode() {
-    stopSpeech()
-    if (!voiceMode) unlockAudio()
-    if (voiceMode && recState !== "idle") {
-      mediaRecorderRef.current?.stop()
-      mediaStreamRef.current?.getTracks().forEach(t => t.stop())
-      setRecState("idle")
-    }
-    setVoiceMode(v => !v)
+  // ── Modo audio manos-libres (VAD) ────────────────────────────────────────
+  // Boton mic (texto) -> entra en modo audio; tecladito -> vuelve a texto.
+  async function handleModeToggle() {
+    if (voiceMode) exitVoiceMode()
+    else await enterVoiceMode()
   }
 
-  async function startRecording() {
+  async function enterVoiceMode() {
     unlockAudio()
-    stopSpeech() // si el asistente estaba hablando, cortar de inmediato y pasar a escuchar
+    voiceModeRef.current = true
+    mutedRef.current = false
+    setVoiceMode(true)
     try {
-      // Mono + cancelacion de ruido: mejor para reconocimiento de voz y mas liviano.
+      // Mono + cancelacion de ruido: mejor reconocimiento y menos eco del asistente.
       const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
+        audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       })
       mediaStreamRef.current = stream
-      const mimeType = ["audio/webm", "audio/mp4", "audio/ogg"].find(t => MediaRecorder.isTypeSupported(t)) || ""
-      // Bitrate bajo (24 kbps): la voz se entiende perfecto y el archivo pesa
-      // una fraccion, asi sube mucho mas rapido en redes moviles (era el cuello
-      // de botella real del speech-to-text, no el modelo).
-      const recOpts = { audioBitsPerSecond: 24000 }
-      if (mimeType) recOpts.mimeType = mimeType
-      const rec = new MediaRecorder(stream, recOpts)
-      audioChunksRef.current = []
-      rec.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data) }
-      rec.onstop = () => {
-        mediaStreamRef.current?.getTracks().forEach(t => t.stop())
-        mediaStreamRef.current = null
-        const blob = new Blob(audioChunksRef.current, { type: mimeType || "audio/webm" })
-        transcribeAndSend(blob, mimeType)
-      }
-      mediaRecorderRef.current = rec
-      rec.start()
-      setRecState("recording")
+      const Ctx = window.AudioContext || window.webkitAudioContext
+      const ctx = new Ctx()
+      if (ctx.state === "suspended") await ctx.resume()
+      const source = ctx.createMediaStreamSource(stream)
+      const analyser = ctx.createAnalyser()
+      analyser.fftSize = 2048
+      source.connect(analyser)
+      audioCtxRef.current = ctx
+      analyserRef.current = analyser
+      startListening()
+      vadRafRef.current = requestAnimationFrame(vadTick)
     } catch (e) {
       setMessages(prev => [...prev, { role: "assistant", content: "⚠️ No se pudo acceder al micrófono. Revisá los permisos del navegador." }])
+      exitVoiceMode()
     }
   }
 
-  function stopRecording() {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
-      mediaRecorderRef.current.stop()
-      setRecState("transcribing")
+  function exitVoiceMode() {
+    voiceModeRef.current = false
+    listeningRef.current = false
+    cancelUtterance()
+    stopSpeech()
+    if (vadRafRef.current) { cancelAnimationFrame(vadRafRef.current); vadRafRef.current = 0 }
+    mediaStreamRef.current?.getTracks().forEach(t => t.stop())
+    mediaStreamRef.current = null
+    if (audioCtxRef.current) { audioCtxRef.current.close().catch(() => {}); audioCtxRef.current = null }
+    analyserRef.current = null
+    setVoiceMode(false)
+    setVoicePhase("off")
+  }
+
+  // Empieza (o retoma) a escuchar en busca de voz.
+  function startListening() {
+    speakingRef.current = false
+    silenceStartRef.current = 0
+    listeningRef.current = true
+    setVoicePhase("listening")
+  }
+
+  // Loop que mide el volumen del microfono: detecta cuando arrancas a hablar y,
+  // sobre todo, cuando te quedas en silencio -> ahi corta y envia solo.
+  function vadTick() {
+    const analyser = analyserRef.current
+    if (analyser && listeningRef.current) {
+      const buf = new Uint8Array(analyser.fftSize)
+      analyser.getByteTimeDomainData(buf)
+      let sum = 0
+      for (let i = 0; i < buf.length; i++) { const v = (buf[i] - 128) / 128; sum += v * v }
+      const rms = Math.sqrt(sum / buf.length)
+      const now = performance.now()
+      if (rms > VAD_THRESHOLD) {
+        if (!speakingRef.current) { speakingRef.current = true; speechStartRef.current = now; beginUtterance() }
+        silenceStartRef.current = 0
+      } else if (speakingRef.current) {
+        if (!silenceStartRef.current) silenceStartRef.current = now
+        else if (now - silenceStartRef.current > VAD_SILENCE_MS) {
+          const dur = now - speechStartRef.current
+          speakingRef.current = false
+          silenceStartRef.current = 0
+          endUtterance(dur >= VAD_MIN_SPEECH_MS)
+        }
+      }
     }
+    if (voiceModeRef.current) vadRafRef.current = requestAnimationFrame(vadTick)
+  }
+
+  function beginUtterance() {
+    const stream = mediaStreamRef.current
+    if (!stream) return
+    const mimeType = ["audio/webm", "audio/mp4", "audio/ogg"].find(t => MediaRecorder.isTypeSupported(t)) || ""
+    recMimeRef.current = mimeType
+    const recOpts = { audioBitsPerSecond: 24000 }
+    if (mimeType) recOpts.mimeType = mimeType
+    const rec = new MediaRecorder(stream, recOpts)
+    audioChunksRef.current = []
+    rec.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data) }
+    mediaRecorderRef.current = rec
+    rec.start()
+  }
+
+  // Cierra la toma actual; si send=true la transcribe y envia, si no la descarta.
+  function endUtterance(send) {
+    const rec = mediaRecorderRef.current
+    mediaRecorderRef.current = null
+    if (!rec || rec.state === "inactive") return
+    const mimeType = recMimeRef.current
+    if (send) { listeningRef.current = false; setVoicePhase("sending") }
+    rec.onstop = () => {
+      if (!send) return
+      const blob = new Blob(audioChunksRef.current, { type: mimeType || "audio/webm" })
+      transcribeAndSend(blob, mimeType)
+    }
+    try { rec.stop() } catch (_) {}
+  }
+
+  function cancelUtterance() {
+    const rec = mediaRecorderRef.current
+    mediaRecorderRef.current = null
+    speakingRef.current = false
+    silenceStartRef.current = 0
+    if (rec && rec.state !== "inactive") { rec.onstop = null; try { rec.stop() } catch (_) {} }
   }
 
   async function transcribeAndSend(blob, mimeType) {
@@ -337,11 +441,31 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
       const res = await fetch(`${API}/transcribe`, { method: "POST", body: formData })
       const data = await res.json()
       if (data.error) throw new Error(data.error)
-      if (data.text?.trim()) sendMessage(data.text.trim())
+      const said = data.text?.trim()
+      if (said) {
+        setVoicePhase("responding")
+        await sendMessage(said)
+        await speechQueueRef.current // esperar a que termine de sonar la respuesta
+      }
     } catch (e) {
       setMessages(prev => [...prev, { role: "assistant", content: `⚠️ Error al transcribir el audio: ${e.message}` }])
     } finally {
-      setRecState("idle")
+      // Volver a escuchar solo, salvo que el usuario haya salido o puesto pausa.
+      if (voiceModeRef.current && !mutedRef.current) startListening()
+    }
+  }
+
+  // Boton del microfono dentro del modo audio = mutear / reanudar.
+  function toggleMute() {
+    if (mutedRef.current) {
+      mutedRef.current = false
+      startListening()
+    } else {
+      mutedRef.current = true
+      listeningRef.current = false
+      cancelUtterance()
+      stopSpeech() // corta la voz del asistente si esta hablando
+      setVoicePhase("muted")
     }
   }
 
@@ -675,9 +799,9 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
             {enableVoice && (
               <button
                 className="mode-toggle-btn"
-                onClick={toggleVoiceMode}
+                onClick={handleModeToggle}
                 disabled={!sessionId}
-                title={voiceMode ? "Volver a modo texto" : "Cambiar a modo audio"}
+                title={voiceMode ? "Volver a modo texto" : "Cambiar a modo audio (manos libres)"}
               >
                 {voiceMode ? (
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -693,13 +817,15 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
             {voiceMode ? (
               <div className="voice-record-row">
                 <button
-                  className={`voice-record-btn ${recState}`}
-                  onClick={recState === "recording" ? stopRecording : recState === "idle" ? startRecording : undefined}
-                  disabled={recState === "transcribing" || !sessionId}
-                  title={recState === "recording" ? "Detener grabación y enviar" : "Tocar para hablar"}
+                  className={`voice-record-btn ${voicePhase}`}
+                  onClick={toggleMute}
+                  disabled={!sessionId}
+                  title={voicePhase === "muted" ? "Reanudar la escucha" : "Silenciar / pausar"}
                 >
-                  {recState === "recording" ? (
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
+                  {voicePhase === "muted" ? (
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="2" y1="2" x2="22" y2="22"/><path d="M18.9 13.2A7 7 0 0 0 19 12v-1"/><path d="M5 11v1a7 7 0 0 0 10.7 6"/><path d="M9 5a3 3 0 0 1 6 0v5"/><path d="M9 9v2a3 3 0 0 0 4.6 2.5"/><line x1="12" y1="18" x2="12" y2="22"/>
+                    </svg>
                   ) : (
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v1a7 7 0 0 1-14 0v-1"/><line x1="12" y1="18" x2="12" y2="22"/>
@@ -707,7 +833,11 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
                   )}
                 </button>
                 <span className="voice-status-label">
-                  {recState === "recording" ? "Escuchando..." : recState === "transcribing" ? "Transcribiendo..." : "Tocá para hablar"}
+                  {voicePhase === "listening"  ? "Te escucho… hablá"
+                   : voicePhase === "sending"    ? "Enviando…"
+                   : voicePhase === "responding" ? "Respondiendo… (tocá para silenciar)"
+                   : voicePhase === "muted"      ? "En pausa — tocá el micrófono para hablar"
+                   : ""}
                 </span>
               </div>
             ) : (
