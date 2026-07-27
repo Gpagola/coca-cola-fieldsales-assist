@@ -412,21 +412,34 @@ def _es_transcripcion_valida(texto):
     return normal not in _WHISPER_ALUCINACIONES
 
 
+# Cliente OpenAI reutilizado para las rutas de voz (STT/TTS): mantener un solo
+# cliente reusa el pool de conexiones HTTP y evita rehacer el handshake TLS a
+# OpenAI en cada request, que agregaba latencia perceptible al modo de voz.
+_voice_openai_client = None
+
+def _voice_openai():
+    global _voice_openai_client
+    if _voice_openai_client is None:
+        _voice_openai_client = OpenAI()
+    return _voice_openai_client
+
+
 @app.route("/api/transcribe", methods=["POST"])
 def transcribe_audio():
     """
     Recibe una grabacion de audio (modo de voz del chat movil) y la transcribe
-    a texto con Whisper para pasarla al agente como si el vendedor la hubiera escrito.
+    a texto para pasarla al agente como si el vendedor la hubiera escrito.
     """
     if "audio" not in request.files:
         return jsonify({"error": "No se recibio ningun audio"}), 400
 
     audio_file = request.files["audio"]
-    client = OpenAI()
+    client = _voice_openai()
 
     try:
+        # gpt-4o-mini-transcribe: mas rapido que whisper-1 y mejor con acento.
         transcript = client.audio.transcriptions.create(
-            model="whisper-1",
+            model="gpt-4o-mini-transcribe",
             file=(audio_file.filename or "recording.webm", audio_file.read(), audio_file.mimetype),
             language="es",
         )
@@ -449,7 +462,7 @@ def speak_text():
     if not text:
         return jsonify({"error": "text es requerido"}), 400
 
-    client = OpenAI()
+    client = _voice_openai()
 
     try:
         response = client.audio.speech.create(
