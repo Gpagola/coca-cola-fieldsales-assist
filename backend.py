@@ -518,6 +518,12 @@ def _contexto_previo_realtime(session_id: str) -> str:
     LangGraph existente para esa session_id, asi el modo de voz en vivo tiene continuidad
     si el vendedor ya venia hablando por texto/voz clasica. Nunca falla: ante cualquier
     error (sesion nueva, agente no inicializado, etc.) devuelve string vacio."""
+    # Si el agente de texto todavia no se construyo en este proceso (backend recien
+    # reiniciado), no puede existir historial previo para NINGUN session_id — construirlo
+    # aca solo para mirar (cargar_system_prompt + preload_ontologies desde MySQL) le
+    # costaba ~10s al primer arranque de voz en vivo despues de cada deploy, sin ganar nada.
+    if _agent is None:
+        return ""
     try:
         config = {"configurable": {"thread_id": session_id}}
         state = get_agent().get_state(config)
@@ -1280,6 +1286,7 @@ def _on_ontology_changed(nombre: str):
     if nombre in ("system-prompt", None):
         _agent = None
         _checkpointer = None
+        realtime_voice.invalidar_prompt_cache()
 
 
 @app.route("/api/ontologias/<nombre>", methods=["PUT"])
@@ -1648,4 +1655,13 @@ def autopilot_evaluate():
 # ── Arranque ──────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
+    # Precalienta el agente (system prompt + ontologias) y el cache de prompt del modo
+    # de voz en vivo al arrancar — sin esto, el costo de esas consultas a MySQL (~3-10s)
+    # lo paga el primer request real despues de cada deploy/restart, en vez de pagarse
+    # una sola vez aca donde nadie esta esperando en pantalla.
+    try:
+        get_agent()
+        realtime_voice.precalentar_cache_prompt()
+    except Exception as e:
+        print(f"[warmup] {e}")
     app.run(debug=False, use_reloader=False, port=int(os.getenv("PORT", 5002)), threaded=True)

@@ -234,6 +234,8 @@ export default function useRealtimeVoice({
     activeRef.current = true
     setNeedsAudioTap(false)
     setPhaseBoth("connecting")
+    const t0 = Date.now()
+    const mark = (label) => console.log(`[realtime] ${label}: +${Date.now() - t0}ms`)
     try {
       // 1. Desbloquear el <audio> remoto en iOS: un play() real dentro de este click.
       const audioEl = audioElRef.current
@@ -247,20 +249,24 @@ export default function useRealtimeVoice({
           audioEl.muted = false
         } catch (_) {}
       }
+      mark("audio desbloqueado")
 
-      // 2. Microfono — mismas constraints que el modo de voz clasico (VAD).
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-      })
+      // 2. Microfono y 3. token efimero en PARALELO — son independientes entre si, y
+      // esperarlos en serie (como antes) suma la latencia de ambos en vez de la del mas
+      // lento. El backend nunca ve el audio, solo emite el token.
+      const [stream, res] = await Promise.all([
+        navigator.mediaDevices.getUserMedia({
+          audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        }).then(s => { mark("microfono listo"); return s }),
+        fetch(`${api}/realtime/session`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ session_id: sessionIdRef.current }),
+        }).then(r => { mark("token recibido"); return r }),
+      ])
       if (!activeRef.current) { stream.getTracks().forEach(t => t.stop()); return }
       micStreamRef.current = stream
 
-      // 3. Token efimero de conexion (el backend nunca ve el audio, solo emite esto).
-      const res = await fetch(`${api}/realtime/session`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ session_id: sessionIdRef.current }),
-      })
       const data = await res.json()
       if (!res.ok || data.error) throw new Error(data.detail || data.error || `HTTP ${res.status}`)
       const clientSecret = data.client_secret
@@ -294,6 +300,7 @@ export default function useRealtimeVoice({
       }
       dc.onopen = () => {
         if (!activeRef.current) return
+        mark("data channel abierto (listo para hablar)")
         if (connectTimeoutRef.current) { clearTimeout(connectTimeoutRef.current); connectTimeoutRef.current = null }
         setPhaseBoth("listening")
       }
@@ -311,6 +318,7 @@ export default function useRealtimeVoice({
 
       const offer = await pc.createOffer()
       await pc.setLocalDescription(offer)
+      mark("oferta SDP lista, enviando a OpenAI")
 
       const sdpRes = await fetch(`https://api.openai.com/v1/realtime/calls?model=${encodeURIComponent(model)}`, {
         method: "POST",
@@ -319,7 +327,9 @@ export default function useRealtimeVoice({
       })
       if (!sdpRes.ok) throw new Error(`HTTP ${sdpRes.status} negociando la conexion de voz`)
       const answerSdp = await sdpRes.text()
+      mark("respuesta SDP de OpenAI recibida")
       await pc.setRemoteDescription({ type: "answer", sdp: answerSdp })
+      mark("respuesta SDP aplicada, esperando ICE/data channel")
 
       // Reloj de guardia: si el data channel no abre en 15s (ICE nunca conecta — la red
       // no deja pasar UDP, NAT simetrico, etc.), cortar en vez de dejar "Conectando..."
