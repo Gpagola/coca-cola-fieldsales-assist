@@ -285,6 +285,16 @@ def invalidar_prompt_cache() -> None:
         _sp_cache = None
 
 
+def precalentar_cache_prompt() -> None:
+    """Llamar una vez al arrancar el backend para que el primer /api/realtime/session
+    real no pague el costo (~2-3s) de la consulta a MySQL — sin esto, ese costo lo
+    paga el primer vendedor que prueba el modo de voz en vivo despues de cada deploy."""
+    try:
+        _system_prompt_cached()
+    except Exception as e:
+        print(f"[realtime_voice precalentar] {e}")
+
+
 def build_realtime_instructions(contexto_previo: str = "") -> str:
     partes = [
         _system_prompt_cached(),
