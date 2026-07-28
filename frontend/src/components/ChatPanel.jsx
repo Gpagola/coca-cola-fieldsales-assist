@@ -95,7 +95,7 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
     const res = await fetch(`${API}/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message, session_id: sessionId, voice_mode: enableVoice && voiceMode }),
+      body: JSON.stringify({ message, session_id: sessionId, voice_mode: enableVoice && voiceModeRef.current }),
       signal: controller.signal,
     })
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
@@ -279,7 +279,7 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
   // reproducirse — lo usamos para recien ahi revelar el texto en pantalla,
   // asi el audio va un paso adelante del texto en modo voz.
   function speakChunk(text, onStart) {
-    if (!enableVoice || !voiceMode) { onStart?.(); return }
+    if (!enableVoice || !voiceModeRef.current) { onStart?.(); return }
     const clean = stripForSpeech(text)
     if (!clean.trim()) { onStart?.(); return }
     const fetchPromise = fetch(`${API}/speak`, {
@@ -496,7 +496,7 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
 
     setMessages(prev => [...prev, { role: "user", content: text, attachment: localAttachment }])
     setLoading(true); onLoadingChange?.(true)
-    if (voiceMode) stopSpeech() // limpiar cualquier resto de la cola de un mensaje anterior
+    if (voiceModeRef.current) stopSpeech() // limpiar cualquier resto de la cola de un mensaje anterior
 
     const controller = new AbortController()
     abortRef.current = controller
@@ -535,7 +535,7 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
 
       let accumulated = ""
       let started = false
-      const voiceTurn = enableVoice && voiceMode
+      const voiceTurn = enableVoice && voiceModeRef.current
 
       const revealUpTo = (len) => {
         const shown = accumulated.slice(0, len)
@@ -572,7 +572,7 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
         else reveal()
       }
     } catch (e) {
-      if (voiceMode) stopSpeech()
+      if (voiceModeRef.current) stopSpeech()
       if (e.name !== "AbortError")
         setMessages(prev => [...prev, { role: "assistant", content: `⚠️ Error: ${e.message}` }])
     } finally {
@@ -588,7 +588,7 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
 
   function handleStop() {
     abortRef.current?.abort()
-    if (voiceMode) stopSpeech()
+    if (voiceModeRef.current) stopSpeech()
   }
 
   function handleKeyDown(e) {
