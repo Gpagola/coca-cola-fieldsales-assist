@@ -28,6 +28,8 @@ from autopilot import (
     MOTIVOS, PERSONALIDADES, _generar_mensaje_cliente
 )
 
+import realtime_voice
+
 load_dotenv()
 
 app = Flask(__name__)
@@ -158,11 +160,47 @@ def _parse_pedido_result(text: str) -> dict | None:
 
 # ── Endpoints de chat ─────────────────────────────────────────────────────────
 
+# Mensajes de estado que se muestran mientras el agente invoca una tool. Se usa tanto en
+# /api/chat (modo texto/voz clasica) como en /api/realtime/tool-call (modo voz en vivo).
+TOOL_STATUS = {
+    "consultar_cuenta_cliente":      "Consultando cuenta...",
+    "consultar_historico_pedidos":   "Consultando historico de pedidos...",
+    "buscar_producto":               "Consultando catalogo...",
+    "consultar_politica_descuento":  "Consultando politica de descuento...",
+    "ontologia_procedimientos":      "Consultando procedimientos...",
+    "ontologia_descuentos":          "Consultando ontologia de descuentos...",
+    "ontologia_faq":                 "Buscando en FAQ...",
+    "analizar_documento":            "Analizando documento adjunto...",
+    "consultar_gestiones_posventa":  "Consultando gestiones de posventa...",
+    "crear_pedido":                  "Registrando pedido...",
+    "cambiar_condicion_pago_pedido": "Actualizando condicion de pago...",
+    "cancelar_pedido":               "Cancelando pedido...",
+    "agregar_nota_pedido":           "Anotando en el pedido...",
+    "abrir_gestion_posventa":        "Abriendo gestion de posventa...",
+    # Modo voz en vivo (Realtime) — tools de preparacion/confirmacion del gate
+    "preparar_pedido":                    "Cotizando pedido...",
+    "preparar_cambio_condicion_pago":     "Recalculando condicion de pago...",
+    "preparar_cancelacion_pedido":        "Verificando cancelacion...",
+    "confirmar_accion":                   "Confirmando...",
+    "descartar_accion":                   "Descartando...",
+}
+
+
 @app.route("/api/session/new", methods=["POST"])
 def new_session():
     """Genera un nuevo session_id unico."""
     session_id = str(uuid.uuid4())
-    return jsonify({"session_id": session_id})
+    return jsonify({
+        "session_id": session_id,
+        "realtime": {
+            "enabled": realtime_voice.REALTIME_ENABLED and bool(os.getenv("OPENAI_API_KEY")),
+            "model": realtime_voice.REALTIME_MODEL,
+            "voice": realtime_voice.REALTIME_VOICE,
+            "max_session_ms": realtime_voice.REALTIME_MAX_SESSION_MS,
+            "tool_status": TOOL_STATUS,
+            "ui_confirm": realtime_voice.REALTIME_UI_CONFIRM,
+        },
+    })
 
 
 @app.route("/api/chat", methods=["POST"])
@@ -185,31 +223,12 @@ def chat():
         message = (
             message
             + "\n\n[MODO VOZ — la respuesta se va a ESCUCHAR en audio, no leer. "
-            "Responde en 1 o 2 oraciones, breve y directo, en tono conversacional. "
-            "Prohibido usar listas, vinetas, numeraciones, tablas o markdown. "
-            "Da solo lo esencial (el dato o el siguiente paso); si hay mucho que "
-            "detallar, resumi y ofrece ampliar si el vendedor lo pide.]"
+            + realtime_voice.VOICE_BREVITY_INSTRUCTIONS
+            + "]"
         )
 
     agent  = get_agent()
     config = {"configurable": {"thread_id": session_id}}
-
-    TOOL_STATUS = {
-        "consultar_cuenta_cliente":      "Consultando cuenta...",
-        "consultar_historico_pedidos":   "Consultando historico de pedidos...",
-        "buscar_producto":               "Consultando catalogo...",
-        "consultar_politica_descuento":  "Consultando politica de descuento...",
-        "ontologia_procedimientos":      "Consultando procedimientos...",
-        "ontologia_descuentos":          "Consultando ontologia de descuentos...",
-        "ontologia_faq":                 "Buscando en FAQ...",
-        "analizar_documento":            "Analizando documento adjunto...",
-        "consultar_gestiones_posventa":  "Consultando gestiones de posventa...",
-        "crear_pedido":                  "Registrando pedido...",
-        "cambiar_condicion_pago_pedido": "Actualizando condicion de pago...",
-        "cancelar_pedido":               "Cancelando pedido...",
-        "agregar_nota_pedido":           "Anotando en el pedido...",
-        "abrir_gestion_posventa":        "Abriendo gestion de posventa...",
-    }
 
     def generate():
         try:
@@ -478,15 +497,123 @@ def speak_text():
             voice="nova",
             input=text,
             speed=1.2,
-            instructions="Hablá en español rioplatense de Argentina, con acento porteño "
-                         "natural (voseo, entonacion argentina). Tono formal y profesional, "
-                         "como un asesor comercial serio y confiable; claro y bien articulado, "
-                         "cordial pero sin excesos de calidez ni informalidad. Ritmo agil.",
+            instructions=realtime_voice.VOZ_INSTRUCCIONES_RIOPLATENSE,
         )
         return Response(response.read(), mimetype="audio/mpeg")
     except Exception as e:
         print(f"ERROR en /api/speak: {e}")
         return jsonify({"error": str(e)}), 500
+
+
+# ── Modo "Voz en vivo" (OpenAI Realtime API) — toggle experimental, mobile-only ───────
+#
+# El audio va directo browser<->OpenAI por WebRTC (nunca pasa por este backend). Estos
+# 3 endpoints son los unicos puntos de contacto: (1) emitir un token efimero de conexion,
+# (2) ejecutar del lado del servidor las tools que el modelo invoque, (3) limpieza al
+# cerrar sesion. Ver realtime_voice.py para el detalle del gate de confirmacion y la
+# conversion de tools.
+
+def _contexto_previo_realtime(session_id: str) -> str:
+    """Mejor esfuerzo: arma un resumen corto (<=1200 caracteres) del historial de
+    LangGraph existente para esa session_id, asi el modo de voz en vivo tiene continuidad
+    si el vendedor ya venia hablando por texto/voz clasica. Nunca falla: ante cualquier
+    error (sesion nueva, agente no inicializado, etc.) devuelve string vacio."""
+    try:
+        config = {"configurable": {"thread_id": session_id}}
+        state = get_agent().get_state(config)
+        msgs = state.values.get("messages", [])
+        lineas = []
+        for m in msgs[-6:]:
+            if not (hasattr(m, "content") and isinstance(m.content, str) and m.content.strip()):
+                continue
+            quien = "Vendedor" if m.type == "human" else "Asistente"
+            lineas.append(f"{quien}: {m.content[:200]}")
+        return "\n".join(lineas)[:1200]
+    except Exception:
+        return ""
+
+
+@app.route("/api/realtime/session", methods=["POST"])
+def realtime_session():
+    """
+    Emite un token efimero (client_secret) para que el navegador se conecte DIRECTO a
+    OpenAI por WebRTC. Body: { "session_id": "...", "contexto_previo": "..." (opcional) }
+    """
+    if not (realtime_voice.REALTIME_ENABLED and os.getenv("OPENAI_API_KEY")):
+        return jsonify({"error": "realtime_disabled"}), 503
+
+    data = request.get_json() or {}
+    session_id = data.get("session_id", "")
+    if not session_id:
+        return jsonify({"error": "session_id es requerido"}), 400
+
+    contexto_previo = (data.get("contexto_previo") or "").strip()
+    if not contexto_previo:
+        contexto_previo = _contexto_previo_realtime(session_id)
+
+    instructions = realtime_voice.build_realtime_instructions(contexto_previo)
+    cfg = realtime_voice.build_session_config(instructions)
+
+    try:
+        client = _voice_openai()
+        secret = client.realtime.client_secrets.create(**cfg)
+        print(
+            f"[realtime] token emitido session={session_id} model={realtime_voice.REALTIME_MODEL} "
+            f"tools={len(cfg['session']['tools'])}"
+        )
+        return jsonify({
+            "client_secret": secret.value,
+            "expires_at": secret.expires_at,
+            "model": realtime_voice.REALTIME_MODEL,
+            "voice": realtime_voice.REALTIME_VOICE,
+        })
+    except Exception as e:
+        body = getattr(e, "body", None) or getattr(getattr(e, "response", None), "text", None) or str(e)
+        print(f"ERROR en /api/realtime/session: {e} | body={body}")
+        return jsonify({"error": "openai_error", "detail": str(body)}), 502
+
+
+@app.route("/api/realtime/tool-call", methods=["POST"])
+def realtime_tool_call():
+    """
+    Puente de ejecucion del modo de voz en vivo: el navegador recibe un tool-call del
+    modelo por el data channel de WebRTC y llama aca para que el backend la ejecute de
+    verdad contra MySQL (el navegador nunca toca la base directamente). Siempre responde
+    200 con un string en espanol, incluso ante error — un 500 dejaria al modelo esperando
+    un call_id sin resolver para siempre.
+    Body: { "session_id", "call_id", "name", "arguments", "user_turn_seq", "ui_confirmed"? }
+    """
+    data = request.get_json() or {}
+    session_id    = data.get("session_id", "")
+    call_id       = data.get("call_id", "")
+    name          = data.get("name", "")
+    arguments     = data.get("arguments") or {}
+    user_turn_seq = int(data.get("user_turn_seq") or 0)
+    ui_confirmed  = bool(data.get("ui_confirmed", False))
+
+    if not session_id or not call_id or not name:
+        return jsonify({"error": "session_id, call_id y name son requeridos"}), 400
+
+    output, meta = realtime_voice.ejecutar_tool(name, arguments, session_id, user_turn_seq, ui_confirmed)
+
+    if isinstance(output, str):
+        pedido_data = _parse_pedido_result(output)
+        if pedido_data:
+            meta["pedido"] = pedido_data
+
+    return jsonify({"output": output, "meta": meta})
+
+
+@app.route("/api/realtime/end", methods=["POST"])
+def realtime_end():
+    """Cierre prolijo de una sesion de voz en vivo: descarta cualquier borrador de pedido
+    que hubiera quedado pendiente sin confirmar. No es indispensable (los borradores
+    tienen TTL propio) pero evita que queden colgados en memoria hasta vencer solos."""
+    data = request.get_json() or {}
+    session_id = data.get("session_id", "")
+    if session_id:
+        realtime_voice.limpiar_borradores_de_sesion(session_id)
+    return jsonify({"ok": True})
 
 
 def _interpretar_con_vision(client, texto_plano=None, b64_imagen=None, b64_pdf=None, mime="image/jpeg"):
@@ -545,6 +672,7 @@ def _reset_agent():
     _agent = None
     _checkpointer = None
     invalidate_ontology_cache()
+    realtime_voice.invalidar_prompt_cache()
 
 
 @app.route("/api/perfiles", methods=["GET"])

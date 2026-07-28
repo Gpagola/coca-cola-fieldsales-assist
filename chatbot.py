@@ -637,6 +637,95 @@ _ESTADOS_PEDIDO_ACTIVOS_PARA_CANCELAR = {"solicitado", "en_revision"}
 
 # ── Tools de escritura ─────────────────────────────────────────────────────────
 
+def _cotizar_pedido(cur, codigo: str, items: list, condicion_norm: str):
+    """Valida y cotiza un pedido SIN escribir en la base (solo SELECTs). Devuelve
+    (cotizacion, None) si todo esta ok, o (None, mensaje_de_error) si algo fallo.
+    Extraida de crear_pedido para poder reusarla desde previsualizar_pedido (modo
+    voz en vivo) sin duplicar la logica de calculo de descuento."""
+    empresa = _fetch_empresa(cur, codigo)
+    if not empresa:
+        return None, f"No se encontro ninguna cuenta con codigo '{codigo}'. Verifica el dato antes de tomar el pedido."
+    if not empresa["activo"]:
+        return None, f"La cuenta {codigo} figura como INACTIVA. No se puede tomar un pedido nuevo."
+
+    lineas = []
+    volumen_total = 0.0
+    for item in items:
+        nombre_prod = str(item.get("producto", "")).strip()
+        try:
+            cantidad = int(item.get("cantidad", 0))
+        except (TypeError, ValueError):
+            cantidad = 0
+        if not nombre_prod or cantidad <= 0:
+            return None, f"Item invalido: {item}. Cada item necesita 'producto' y 'cantidad' (entero positivo)."
+
+        cur.execute("""
+            SELECT id, nombre, litros, precio_lista FROM productos
+            WHERE activo = 1 AND (
+                nombre LIKE %s OR codigo_sku LIKE %s OR CONCAT(nombre, ' ', formato) LIKE %s
+            )
+            ORDER BY nombre LIMIT 1
+        """, (f"%{nombre_prod}%", f"%{nombre_prod}%", f"%{nombre_prod}%"))
+        prod_row = cur.fetchone()
+        if not prod_row:
+            return None, f"No se encontro el producto '{nombre_prod}' en el catalogo. Verifica el nombre o SKU."
+
+        prod_id, prod_nombre, litros_unit, precio_lista = prod_row
+        volumen_total += float(litros_unit) * cantidad
+        lineas.append((prod_id, prod_nombre, cantidad, float(precio_lista)))
+
+    pct, _condiciones = _match_politica_descuento(
+        cur, empresa["canal"], condicion_norm, round(volumen_total, 3), empresa["tamano_canal"]
+    )
+    pct = pct if pct is not None else 0.0
+
+    subtotal = 0.0
+    detalle_rows = []
+    for prod_id, prod_nombre, cantidad, precio_unit in lineas:
+        precio_neto = round(precio_unit * (1 - pct / 100), 2)
+        subtotal_linea = round(precio_neto * cantidad, 2)
+        subtotal += subtotal_linea
+        detalle_rows.append((prod_id, prod_nombre, cantidad, precio_unit, pct, precio_neto, subtotal_linea))
+    subtotal = round(subtotal, 2)
+
+    return {
+        "empresa": empresa,
+        "lineas": lineas,
+        "detalle_rows": detalle_rows,
+        "volumen_litros": volumen_total,
+        "descuento_pct": pct,
+        "subtotal": subtotal,
+        "total": subtotal,
+    }, None
+
+
+def _insertar_pedido(cur, cot: dict, condicion_norm: str, notas: str) -> str:
+    """Escribe en la base (INSERT pedidos + detalle_pedido) a partir de una cotizacion ya
+    calculada por _cotizar_pedido. Devuelve el numero_pedido generado."""
+    empresa = cot["empresa"]
+    numero_pedido = _siguiente_numero_pedido(cur)
+    notas_iniciales = f"Pedido tomado en terreno. {notas.strip()}" if notas.strip() else "Pedido tomado en terreno."
+    ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    cur.execute("""
+        INSERT INTO pedidos (numero_pedido, empresa_cliente_id, fecha_pedido, estado, canal_venta,
+                              condicion_pago, vendedor, descuento_aplicado_pct, subtotal, total, notas,
+                              fecha_actualizacion_estado)
+        VALUES (%s, %s, CURDATE(), 'solicitado', %s, %s, %s, %s, %s, %s, %s, %s)
+    """, (numero_pedido, empresa["id"], empresa["canal"], condicion_norm,
+          empresa["vendedor_asignado"], cot["descuento_pct"], cot["subtotal"], cot["total"],
+          notas_iniciales, ahora))
+
+    for prod_id, _nombre, cantidad, precio_unit, pct, precio_neto, subtotal_linea in cot["detalle_rows"]:
+        cur.execute("""
+            INSERT INTO detalle_pedido (numero_pedido, producto_id, cantidad, precio_unitario,
+                                         descuento_pct, precio_neto_unitario, subtotal_linea)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """, (numero_pedido, prod_id, cantidad, precio_unit, pct, precio_neto, subtotal_linea))
+
+    return numero_pedido
+
+
 @tool
 def crear_pedido(codigo_cliente: str, items_json: str, condicion_pago: str, notas: str = "") -> str:
     """Registra un pedido nuevo para una cuenta. `items_json` es un string JSON con una lista
@@ -662,90 +751,57 @@ def crear_pedido(codigo_cliente: str, items_json: str, condicion_pago: str, nota
     conn = get_conn()
     try:
         cur = conn.cursor()
-        empresa = _fetch_empresa(cur, codigo)
-        if not empresa:
+        cot, error = _cotizar_pedido(cur, codigo, items, condicion_norm)
+        if error:
             cur.close()
-            return f"No se encontro ninguna cuenta con codigo '{codigo}'. Verifica el dato antes de tomar el pedido."
-        if not empresa["activo"]:
-            cur.close()
-            return f"La cuenta {codigo} figura como INACTIVA. No se puede tomar un pedido nuevo."
-
-        lineas = []
-        volumen_total = 0.0
-        for item in items:
-            nombre_prod = str(item.get("producto", "")).strip()
-            try:
-                cantidad = int(item.get("cantidad", 0))
-            except (TypeError, ValueError):
-                cantidad = 0
-            if not nombre_prod or cantidad <= 0:
-                cur.close()
-                return f"Item invalido: {item}. Cada item necesita 'producto' y 'cantidad' (entero positivo)."
-
-            cur.execute("""
-                SELECT id, nombre, litros, precio_lista FROM productos
-                WHERE activo = 1 AND (
-                    nombre LIKE %s OR codigo_sku LIKE %s OR CONCAT(nombre, ' ', formato) LIKE %s
-                )
-                ORDER BY nombre LIMIT 1
-            """, (f"%{nombre_prod}%", f"%{nombre_prod}%", f"%{nombre_prod}%"))
-            prod_row = cur.fetchone()
-            if not prod_row:
-                cur.close()
-                return f"No se encontro el producto '{nombre_prod}' en el catalogo. Verifica el nombre o SKU."
-
-            prod_id, prod_nombre, litros_unit, precio_lista = prod_row
-            volumen_total += float(litros_unit) * cantidad
-            lineas.append((prod_id, prod_nombre, cantidad, float(precio_lista)))
-
-        pct, _condiciones = _match_politica_descuento(
-            cur, empresa["canal"], condicion_norm, round(volumen_total, 3), empresa["tamano_canal"]
-        )
-        pct = pct if pct is not None else 0.0
-
-        numero_pedido = _siguiente_numero_pedido(cur)
-        subtotal = 0.0
-        detalle_rows = []
-        for prod_id, prod_nombre, cantidad, precio_unit in lineas:
-            precio_neto = round(precio_unit * (1 - pct / 100), 2)
-            subtotal_linea = round(precio_neto * cantidad, 2)
-            subtotal += subtotal_linea
-            detalle_rows.append((numero_pedido, prod_id, cantidad, precio_unit, pct, precio_neto, subtotal_linea))
-        subtotal = round(subtotal, 2)
-        total = subtotal
-
-        notas_iniciales = f"Pedido tomado en terreno. {notas.strip()}" if notas.strip() else "Pedido tomado en terreno."
-        ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-        cur.execute("""
-            INSERT INTO pedidos (numero_pedido, empresa_cliente_id, fecha_pedido, estado, canal_venta,
-                                  condicion_pago, vendedor, descuento_aplicado_pct, subtotal, total, notas,
-                                  fecha_actualizacion_estado)
-            VALUES (%s, %s, CURDATE(), 'solicitado', %s, %s, %s, %s, %s, %s, %s, %s)
-        """, (numero_pedido, empresa["id"], empresa["canal"], condicion_norm,
-              empresa["vendedor_asignado"], pct, subtotal, total, notas_iniciales, ahora))
-
-        for row in detalle_rows:
-            cur.execute("""
-                INSERT INTO detalle_pedido (numero_pedido, producto_id, cantidad, precio_unitario,
-                                             descuento_pct, precio_neto_unitario, subtotal_linea)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """, row)
-
+            return error
+        numero_pedido = _insertar_pedido(cur, cot, condicion_norm, notas)
         conn.commit()
         cur.close()
     finally:
         conn.close()
 
-    items_str = "\n".join(f"  * {nom} x{cant}" for _, nom, cant, _ in lineas)
+    empresa = cot["empresa"]
+    items_str = "\n".join(f"  * {nom} x{cant}" for _, nom, cant, _ in cot["lineas"])
     return (
         f"Pedido {numero_pedido} registrado correctamente para {empresa['nombre_comercial']} ({codigo}).\n"
         f"- Estado: solicitado (pendiente de revision de backoffice)\n"
         f"- Condicion de pago: {condicion_norm}\n"
-        f"- Descuento aplicado: {pct:.1f}%\n"
-        f"- Total: {total:.2f}\n"
+        f"- Descuento aplicado: {cot['descuento_pct']:.1f}%\n"
+        f"- Total: {cot['total']:.2f}\n"
         f"Items:\n{items_str}"
     )
+
+
+def _recotizar_condicion_pago(cur, pedido: dict, condicion_norm: str):
+    """SELECT-only: recalcula el descuento y los importes de un pedido existente bajo una
+    nueva condicion de pago. Devuelve (pct, subtotal, detalle_calc) donde detalle_calc es
+    una lista de (detalle_pedido_id, precio_neto, subtotal_linea) lista para UPDATE. Extraida
+    de cambiar_condicion_pago_pedido para reusarla desde previsualizar_cambio_condicion."""
+    cur.execute("""
+        SELECT dp.id, dp.producto_id, dp.cantidad, dp.precio_unitario, pr.litros
+        FROM detalle_pedido dp
+        JOIN productos pr ON pr.id = dp.producto_id
+        WHERE dp.numero_pedido = %s
+    """, (pedido["numero"],))
+    detalle = cur.fetchall()
+    volumen_total = sum(float(litros) * cantidad for _, _, cantidad, _, litros in detalle)
+
+    pct, _condiciones = _match_politica_descuento(
+        cur, pedido["canal"], condicion_norm, round(volumen_total, 3), pedido["tamano_canal"]
+    )
+    pct = pct if pct is not None else 0.0
+
+    subtotal = 0.0
+    detalle_calc = []
+    for det_id, prod_id, cantidad, precio_unit, _litros in detalle:
+        precio_neto = round(float(precio_unit) * (1 - pct / 100), 2)
+        subtotal_linea = round(precio_neto * cantidad, 2)
+        subtotal += subtotal_linea
+        detalle_calc.append((det_id, precio_neto, subtotal_linea))
+    subtotal = round(subtotal, 2)
+
+    return pct, subtotal, detalle_calc
 
 
 @tool
@@ -778,31 +834,13 @@ def cambiar_condicion_pago_pedido(numero_pedido: str, nueva_condicion_pago: str)
             cur.close()
             return f"El pedido {numero} ya tiene condicion de pago '{condicion_norm}'. No se requiere cambio."
 
-        cur.execute("""
-            SELECT dp.id, dp.producto_id, dp.cantidad, dp.precio_unitario, pr.litros
-            FROM detalle_pedido dp
-            JOIN productos pr ON pr.id = dp.producto_id
-            WHERE dp.numero_pedido = %s
-        """, (numero,))
-        detalle = cur.fetchall()
-        volumen_total = sum(float(litros) * cantidad for _, _, cantidad, _, litros in detalle)
-
-        pct, _condiciones = _match_politica_descuento(
-            cur, pedido["canal"], condicion_norm, round(volumen_total, 3), pedido["tamano_canal"]
-        )
-        pct = pct if pct is not None else 0.0
-
-        subtotal = 0.0
-        for det_id, prod_id, cantidad, precio_unit, _litros in detalle:
-            precio_neto = round(float(precio_unit) * (1 - pct / 100), 2)
-            subtotal_linea = round(precio_neto * cantidad, 2)
-            subtotal += subtotal_linea
+        pct, subtotal, detalle_calc = _recotizar_condicion_pago(cur, pedido, condicion_norm)
+        for det_id, precio_neto, subtotal_linea in detalle_calc:
             cur.execute("""
                 UPDATE detalle_pedido
                 SET descuento_pct = %s, precio_neto_unitario = %s, subtotal_linea = %s
                 WHERE id = %s
             """, (pct, precio_neto, subtotal_linea, det_id))
-        subtotal = round(subtotal, 2)
 
         nueva_nota = _append_nota(
             pedido["notas"],
@@ -987,6 +1025,131 @@ def abrir_gestion_posventa(codigo_cliente: str, numero_pedido: str, tipo: str, d
         f"Backoffice respondera en un plazo maximo de {sla}. "
         f"El numero de referencia es {numero_gestion}."
     )
+
+
+# ── Previsualizacion para el modo de voz en vivo (Realtime, gate de confirmacion) ─────────
+#
+# Estas funciones NO estan decoradas con @tool: son invisibles para el agente de texto/LangGraph.
+# Las usa realtime_voice.py para cotizar/validar sin escribir en la base, de forma que el modelo
+# de voz en vivo nunca pueda escribir un pedido/cambio/cancelacion directamente — solo prepara
+# un borrador que el backend confirma explicitamente (ver realtime_voice.confirmar_accion).
+
+def previsualizar_pedido(codigo_cliente: str, items: list, condicion_pago: str, notas: str = "") -> dict:
+    """Cotiza un pedido nuevo SIN escribir en la base. `items` es una lista de dicts
+    {"producto": str, "cantidad": int}. Devuelve {"ok": True, "resumen", "commit_args", "datos"}
+    o {"ok": False, "error"}. `commit_args` son los kwargs exactos con los que luego se invoca
+    la tool real `crear_pedido` al confirmar — el modelo no puede alterar el precio entre medio."""
+    codigo = codigo_cliente.strip().upper()
+    condicion_norm = condicion_pago.strip().lower()
+
+    if condicion_norm not in _CONDICIONES_PAGO_VALIDAS:
+        return {"ok": False, "error": f"Condicion de pago '{condicion_pago}' no valida. Usa 'contado' o 'credito'."}
+    if not isinstance(items, list) or not items:
+        return {"ok": False, "error": "Debe indicarse al menos un item con producto y cantidad."}
+
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        cot, error = _cotizar_pedido(cur, codigo, items, condicion_norm)
+        cur.close()
+    finally:
+        conn.close()
+
+    if error:
+        return {"ok": False, "error": error}
+
+    empresa = cot["empresa"]
+    items_str = ", ".join(f"{cant} x {nom}" for _, nom, cant, _ in cot["lineas"])
+    resumen = (
+        f"Pedido para {empresa['nombre_comercial']} ({codigo}): {items_str}. "
+        f"Condicion {condicion_norm}, descuento {cot['descuento_pct']:.1f}%. Total {cot['total']:.2f}."
+    )
+    return {
+        "ok": True,
+        "resumen": resumen,
+        "commit_args": {
+            "codigo_cliente": codigo,
+            "items_json": json.dumps(items, ensure_ascii=False),
+            "condicion_pago": condicion_norm,
+            "notas": notas,
+        },
+        "datos": {"descuento_pct": cot["descuento_pct"], "total": cot["total"], "volumen_litros": cot["volumen_litros"]},
+    }
+
+
+def previsualizar_cambio_condicion(numero_pedido: str, nueva_condicion_pago: str) -> dict:
+    """Recotiza un cambio de condicion de pago SIN escribir en la base. Misma forma de
+    retorno que previsualizar_pedido."""
+    numero = numero_pedido.upper().strip()
+    condicion_norm = nueva_condicion_pago.strip().lower()
+
+    if condicion_norm not in _CONDICIONES_PAGO_VALIDAS:
+        return {"ok": False, "error": f"Condicion de pago '{nueva_condicion_pago}' no valida. Usa 'contado' o 'credito'."}
+
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        pedido = _fetch_pedido(cur, numero)
+        if not pedido:
+            cur.close()
+            return {"ok": False, "error": f"No se encontro el pedido '{numero}'. Verifica el numero."}
+        if pedido["estado"] != "solicitado":
+            cur.close()
+            return {"ok": False, "error": (
+                f"No se puede cambiar la condicion de pago del pedido {numero} porque su estado es "
+                f"'{pedido['estado']}'. Solo es posible mientras esta 'solicitado'."
+            )}
+        if pedido["condicion_pago"] == condicion_norm:
+            cur.close()
+            return {"ok": False, "error": f"El pedido {numero} ya tiene condicion de pago '{condicion_norm}'. No se requiere cambio."}
+
+        pct, subtotal, _detalle_calc = _recotizar_condicion_pago(cur, pedido, condicion_norm)
+        cur.close()
+    finally:
+        conn.close()
+
+    resumen = (
+        f"Pedido {numero} ({pedido['nombre_comercial']}): condicion de pago '{pedido['condicion_pago']}' "
+        f"pasa a '{condicion_norm}'. Descuento recalculado {pct:.1f}%. Nuevo total {subtotal:.2f}."
+    )
+    return {
+        "ok": True,
+        "resumen": resumen,
+        "commit_args": {"numero_pedido": numero, "nueva_condicion_pago": condicion_norm},
+        "datos": {"descuento_pct": pct, "total": subtotal},
+    }
+
+
+def previsualizar_cancelacion(numero_pedido: str, motivo: str = "") -> dict:
+    """Valida que un pedido se pueda cancelar SIN escribir en la base. Misma forma de
+    retorno que previsualizar_pedido."""
+    numero = numero_pedido.upper().strip()
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        pedido = _fetch_pedido(cur, numero)
+        cur.close()
+    finally:
+        conn.close()
+
+    if not pedido:
+        return {"ok": False, "error": f"No se encontro el pedido '{numero}'. Verifica el numero."}
+    if pedido["estado"] == "cancelado":
+        return {"ok": False, "error": f"El pedido {numero} ya esta cancelado."}
+    if pedido["estado"] not in _ESTADOS_PEDIDO_ACTIVOS_PARA_CANCELAR:
+        return {"ok": False, "error": (
+            f"No se puede cancelar el pedido {numero} porque su estado actual es '{pedido['estado']}'. "
+            f"Si hay un problema con este pedido, hay que abrir una gestion de posventa en su lugar."
+        )}
+
+    motivo_norm = motivo.strip() or "Cancelado por el vendedor (confirmado por voz en vivo)."
+    resumen = f"Cancelar el pedido {numero} de {pedido['nombre_comercial']} (total {float(pedido['total']):.2f}). Motivo: {motivo_norm}."
+    return {
+        "ok": True,
+        "resumen": resumen,
+        "commit_args": {"numero_pedido": numero, "motivo": motivo_norm},
+        "datos": {"total": float(pedido["total"])},
+    }
 
 
 # ── Construccion del agente ───────────────────────────────────────────────────
