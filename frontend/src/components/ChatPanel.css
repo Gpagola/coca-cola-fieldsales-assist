@@ -68,6 +68,13 @@
 
 .session-sep { color: var(--border-focus); }
 
+/* Todos los campos salvo el nombre del comercio — en desktop no cambia nada
+   (display: contents no genera caja propia, los hijos siguen fluyendo en el
+   flex del session-bar); en mobile se ocultan todos juntos (ver @media abajo). */
+.session-extra { display: contents; }
+
+.session-value--nombre { font-weight: 600; }
+
 .session-empty {
   color: var(--text-faint);
   font-size: 11px;
@@ -744,6 +751,12 @@
   }
 
   .session-bar { padding: 10px 12px; gap: 6px 10px; }
+
+  /* En mobile la barra de contexto solo muestra el nombre del comercio — el
+     resto (codigo de cuenta, canal, condicion de pago, distribucion, tamano
+     de canal, ciudad) ocupaba varias lineas y empujaba el chat fuera de
+     pantalla. Sigue disponible en desktop. */
+  .session-extra { display: none; }
 
   .input-area { padding: 10px 12px 16px; max-width: 100%; }
 

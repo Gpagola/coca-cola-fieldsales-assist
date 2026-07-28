@@ -276,7 +276,7 @@ def chat():
 
                 if node == "tools":
                     content = chunk.content if hasattr(chunk, "content") else ""
-                    if isinstance(content, str) and "Pedido encontrado" in content:
+                    if isinstance(content, str):
                         pedido_data = _parse_pedido_result(content)
                         if pedido_data:
                             yield f"data: {json.dumps({'pedido': pedido_data})}\n\n"
@@ -1536,10 +1536,9 @@ def autopilot_run(session_id):
                             yield f"data: {json.dumps({'type': 'tool', 'name': tool_name})}\n\n"
 
                     if node == "tools" and hasattr(chunk, "content") and isinstance(chunk.content, str):
-                        if "Pedido encontrado" in chunk.content:
-                            pedido_data = _parse_pedido_result(chunk.content)
-                            if pedido_data:
-                                yield f"data: {json.dumps({'pedido': pedido_data})}\n\n"
+                        pedido_data = _parse_pedido_result(chunk.content)
+                        if pedido_data:
+                            yield f"data: {json.dumps({'pedido': pedido_data})}\n\n"
 
                     if node == "agent" and isinstance(chunk.content, str) and chunk.content:
                         response += chunk.content
