@@ -236,14 +236,39 @@ export default function useRealtimeVoice({
     setPhaseBoth("connecting")
     const t0 = Date.now()
     const mark = (label) => console.log(`[realtime] ${label}: +${Date.now() - t0}ms`)
+
+    // Reloj de guardia UNICO para TODA la secuencia de conexion (no solo la espera final
+    // de ICE): audioEl.play() en particular es una promesa que en algunos navegadores
+    // mobile puede quedar colgada sin resolver NI rechazar nunca, lo que dejaba la UI en
+    // "Conectando..." para siempre sin llegar siquiera a pedir el microfono. Armarlo aca,
+    // antes de cualquier await, garantiza que ningun paso de la secuencia pueda colgarse
+    // sin limite de tiempo.
+    connectTimeoutRef.current = setTimeout(() => {
+      if (activeRef.current && phaseRef.current === "connecting") {
+        console.error("[realtime] timeout de conexion (20s) — abortando")
+        activeRef.current = false
+        setPhaseBoth("error")
+        callbacksRef.current.onError?.(
+          "No se pudo establecer la conexión de voz en vivo (tardó demasiado). Probá de nuevo o con otra red/WiFi."
+        )
+        cleanupConnection()
+      }
+    }, 20000)
+
     try {
       // 1. Desbloquear el <audio> remoto en iOS: un play() real dentro de este click.
+      // race() con un timeout corto: play() puede quedar colgada sin resolver NI
+      // rechazar en algunos navegadores — sin este limite, el await siguiente nunca
+      // se ejecuta y toda la conexion queda trabada aca, antes de pedir el microfono.
       const audioEl = audioElRef.current
       if (audioEl) {
         try {
           audioEl.muted = true
           audioEl.src = SILENT_AUDIO
-          await audioEl.play().catch(() => {})
+          await Promise.race([
+            audioEl.play().catch(() => {}),
+            new Promise((resolve) => setTimeout(resolve, 1500)),
+          ])
           audioEl.pause()
           audioEl.removeAttribute("src")
           audioEl.muted = false
@@ -330,20 +355,6 @@ export default function useRealtimeVoice({
       mark("respuesta SDP de OpenAI recibida")
       await pc.setRemoteDescription({ type: "answer", sdp: answerSdp })
       mark("respuesta SDP aplicada, esperando ICE/data channel")
-
-      // Reloj de guardia: si el data channel no abre en 15s (ICE nunca conecta — la red
-      // no deja pasar UDP, NAT simetrico, etc.), cortar en vez de dejar "Conectando..."
-      // colgado para siempre.
-      connectTimeoutRef.current = setTimeout(() => {
-        if (activeRef.current && phaseRef.current === "connecting") {
-          activeRef.current = false
-          setPhaseBoth("error")
-          callbacksRef.current.onError?.(
-            "No se pudo establecer la conexión de voz en vivo (probablemente la red bloquea la conexión). Probá con otra red/WiFi."
-          )
-          cleanupConnection()
-        }
-      }, 15000)
 
       const maxMs = cfgRef.current?.max_session_ms || 10 * 60 * 1000
       maxSessionTimerRef.current = setTimeout(() => {
