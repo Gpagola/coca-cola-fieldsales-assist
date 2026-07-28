@@ -681,56 +681,60 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
       {/* Barra de contexto — siempre visible, ancho completo */}
       <div className="session-bar">
         {pedido ? (<>
-          <span className="session-item">
-            <span className="session-label">Cuenta</span>
-            <span className="session-value">{pedido.numero}</span>
+          {/* Siempre visible (tambien en mobile): el nombre del comercio, o el codigo de
+              cuenta si todavia no se cargo el nombre. El resto de los datos va dentro de
+              .session-extra, que se oculta en mobile para no ocupar toda la pantalla. */}
+          <span className="session-item session-item--nombre">
+            <span className="session-value session-value--nombre">{pedido.cliente || pedido.numero}</span>
           </span>
-          {pedido.cliente && (<>
-            <span className="session-sep">·</span>
-            <span className="session-item">
-              <span className="session-label">Nombre comercial</span>
-              <span className="session-value">{pedido.cliente}</span>
-            </span>
-          </>)}
-          {pedido.estado && (<>
-            <span className="session-sep">·</span>
-            <span className="session-item">
-              <span className="session-label">Canal</span>
-              <span className={`session-badge estado-${pedido.estado?.toLowerCase().replace(/\s+/g, "-")}`}>
-                {pedido.estado}
+          <span className="session-extra">
+            {pedido.cliente && (<>
+              <span className="session-sep">·</span>
+              <span className="session-item">
+                <span className="session-label">Cuenta</span>
+                <span className="session-value">{pedido.numero}</span>
               </span>
-            </span>
-          </>)}
-          {pedido.metodo_pago && (<>
-            <span className="session-sep">·</span>
-            <span className="session-item">
-              <span className="session-label">Condición de pago</span>
-              <span className="session-value">{pedido.metodo_pago}</span>
-            </span>
-          </>)}
-          {pedido.tracking && (<>
-            <span className="session-sep">·</span>
-            <span className="session-item">
-              <span className="session-label">Distribución</span>
-              <span className="session-value">{pedido.tracking}</span>
-            </span>
-          </>)}
-          {pedido.nivel_fidelidad && (<>
-            <span className="session-sep">·</span>
-            <span className="session-item">
-              <span className="session-label">Tamaño canal</span>
-              <span className={`session-badge fidelidad-${pedido.nivel_fidelidad?.toLowerCase()}`}>
-                {pedido.nivel_fidelidad}
+            </>)}
+            {pedido.estado && (<>
+              <span className="session-sep">·</span>
+              <span className="session-item">
+                <span className="session-label">Canal</span>
+                <span className={`session-badge estado-${pedido.estado?.toLowerCase().replace(/\s+/g, "-")}`}>
+                  {pedido.estado}
+                </span>
               </span>
-            </span>
-          </>)}
-          {pedido.ciudad && (<>
-            <span className="session-sep">·</span>
-            <span className="session-item">
-              <span className="session-label">Ciudad / zona</span>
-              <span className="session-value">{pedido.ciudad}</span>
-            </span>
-          </>)}
+            </>)}
+            {pedido.metodo_pago && (<>
+              <span className="session-sep">·</span>
+              <span className="session-item">
+                <span className="session-label">Condición de pago</span>
+                <span className="session-value">{pedido.metodo_pago}</span>
+              </span>
+            </>)}
+            {pedido.tracking && (<>
+              <span className="session-sep">·</span>
+              <span className="session-item">
+                <span className="session-label">Distribución</span>
+                <span className="session-value">{pedido.tracking}</span>
+              </span>
+            </>)}
+            {pedido.nivel_fidelidad && (<>
+              <span className="session-sep">·</span>
+              <span className="session-item">
+                <span className="session-label">Tamaño canal</span>
+                <span className={`session-badge fidelidad-${pedido.nivel_fidelidad?.toLowerCase()}`}>
+                  {pedido.nivel_fidelidad}
+                </span>
+              </span>
+            </>)}
+            {pedido.ciudad && (<>
+              <span className="session-sep">·</span>
+              <span className="session-item">
+                <span className="session-label">Ciudad / zona</span>
+                <span className="session-value">{pedido.ciudad}</span>
+              </span>
+            </>)}
+          </span>
         </>) : (
           <span className="session-empty">Sin cuenta cargada</span>
         )}
