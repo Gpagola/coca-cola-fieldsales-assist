@@ -213,22 +213,26 @@ def chat():
 
     def generate():
         try:
-            # Risk profile al recibir el mensaje del cliente (antes de que responda el agente)
-            try:
-                prev_state = get_agent().get_state(config)
-                prev_msgs = prev_state.values.get("messages", [])
-                conv_lines = [
-                    f"{'Cliente' if m.type == 'human' else 'Asistente'}: {m.content[:300]}"
-                    for m in prev_msgs
-                    if hasattr(m, "content") and isinstance(m.content, str) and m.content.strip()
-                ]
-                conv_lines.append(f"Cliente: {message[:300]}")
-                if len(conv_lines) > 2:
-                    risk = _analyze_risk_profile("\n".join(conv_lines))
-                    if risk:
-                        yield f"data: {json.dumps({'risk_profile': risk})}\n\n"
-            except Exception as ex:
-                print(f"[risk_profile chat] {ex}")
+            # Risk profile al recibir el mensaje del cliente (antes de que responda el agente).
+            # Alimenta el radar/retencion/sentimiento, que en modo voz no se muestra: se
+            # saltea para no sumarle a la voz una llamada sincrona a OpenAI antes de empezar
+            # siquiera a pensar la respuesta.
+            if not voice_mode:
+                try:
+                    prev_state = get_agent().get_state(config)
+                    prev_msgs = prev_state.values.get("messages", [])
+                    conv_lines = [
+                        f"{'Cliente' if m.type == 'human' else 'Asistente'}: {m.content[:300]}"
+                        for m in prev_msgs
+                        if hasattr(m, "content") and isinstance(m.content, str) and m.content.strip()
+                    ]
+                    conv_lines.append(f"Cliente: {message[:300]}")
+                    if len(conv_lines) > 2:
+                        risk = _analyze_risk_profile("\n".join(conv_lines))
+                        if risk:
+                            yield f"data: {json.dumps({'risk_profile': risk})}\n\n"
+                except Exception as ex:
+                    print(f"[risk_profile chat] {ex}")
 
             current_node = None
             agent_response = ""
@@ -262,8 +266,11 @@ def chat():
                     agent_response += chunk.content
                     yield f"data: {json.dumps({'token': chunk.content})}\n\n"
 
-            # Generar sugerencias al final con la respuesta completa — prompt minimo
-            if agent_response.strip():
+            # Generar sugerencias al final con la respuesta completa — prompt minimo.
+            # En modo voz no hay nada que las muestre (el vendedor esta hablando, no
+            # tocando botones): se saltea esta llamada sincrona a OpenAI para que la
+            # voz no quede esperando algo que no se va a usar.
+            if agent_response.strip() and not voice_mode:
                 try:
                     oai = OpenAI()
                     r = oai.chat.completions.create(
@@ -288,7 +295,8 @@ def chat():
                 except Exception as ex:
                     print(f"[suggestions error] {ex}")
 
-                # Detectar cierre de conversacion
+            # Detectar cierre de conversacion (regex barata, corre siempre)
+            if agent_response.strip():
                 CIERRE_KEYWORDS = ["buen dia", "buenas noches", "hasta luego", "que tenga",
                                    "un placer ayudarte", "no dude en contactar", "fue un placer",
                                    "que tengas un buen dia", "gracias por contactar"]
