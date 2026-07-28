@@ -4,6 +4,7 @@ import { EvaluationModal } from "./EvaluationCard"
 import RadarChart from "./RadarChart"
 import RetentionGauge from "./RetentionGauge"
 import SentimentLine from "./SentimentLine"
+import useRealtimeVoice from "./useRealtimeVoice"
 import "./ChatPanel.css"
 
 const API = import.meta.env.VITE_API_URL || "/api"
@@ -35,6 +36,12 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
   const [sentimentPts, setSentimentPts]   = useState([])
   const [voiceMode, setVoiceMode]         = useState(false)
   const [voicePhase, setVoicePhase]       = useState("off") // off|listening|sending|responding|muted
+  // Modo "Voz en vivo" (OpenAI Realtime API) — experimental, convive con voiceMode de arriba.
+  const [rtEnabled, setRtEnabled]         = useState(false)
+  const [rtCfg, setRtCfg]                 = useState(null)
+  const [rtActive, setRtActive]           = useState(false)
+  const [rtDraft, setRtDraft]             = useState(null)
+  const rtActiveRef = useRef(false)
   const bottomRef    = useRef(null)
   const textareaRef  = useRef(null)
   const abortRef     = useRef(null)
@@ -89,6 +96,34 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
     if (audio) { audio.onended = null; audio.onerror = null; audio.pause() }
     currentAudioCleanupRef.current?.() // resolver la reproduccion pendiente (para no colgar awaits)
     speechQueueRef.current = Promise.resolve()
+  }
+
+  // ── Modo "Voz en vivo" (OpenAI Realtime API) — toggle experimental ──────────
+  // Convive con el modo de voz clasico (VAD) de arriba, mutuamente excluyente con el.
+  const rt = useRealtimeVoice({
+    api: API,
+    sessionId,
+    cfg: rtCfg,
+    onUserTranscript: (text) => setMessages(prev => [...prev, { role: "user", content: text }]),
+    onAssistantTranscript: (text) => { setRtDraft(null); setMessages(prev => [...prev, { role: "assistant", content: text }]) },
+    onStatus: setAgentStatus,
+    onPedido: setPedido,
+    onDraft: (d) => setRtDraft(d),
+    onError: (msg) => setMessages(prev => [...prev, { role: "assistant", content: `⚠️ ${msg}` }]),
+  })
+
+  async function handleRealtimeToggle() {
+    if (rtActive) {
+      rtActiveRef.current = false
+      setRtActive(false)
+      setRtDraft(null)
+      await rt.stop()
+    } else {
+      if (voiceMode) exitVoiceMode() // exclusion mutua: solo un modo de voz activo a la vez
+      rtActiveRef.current = true
+      setRtActive(true)
+      await rt.start()
+    }
   }
 
   async function streamChat(message, sessionId, controller, onToken, onStatus, onPedido, onSuggestions, onCierre, onRiskProfile) {
@@ -172,8 +207,9 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
   useEffect(() => {
     async function init() {
       const r = await fetch(`${API}/session/new`, { method: "POST" })
-      const { session_id } = await r.json()
+      const { session_id, realtime } = await r.json()
       setSessionId(session_id)
+      if (realtime) { setRtEnabled(!!realtime.enabled); setRtCfg(realtime) }
       setMessages([{
         role: "assistant",
         content: initialClienteCodigo
@@ -239,7 +275,9 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
       try { mediaStreamRef.current?.getTracks().forEach(t => t.stop()) } catch (_) {}
       try { audioCtxRef.current?.close() } catch (_) {}
       const a = ttsAudioRef.current; if (a) a.pause()
+      if (rtActiveRef.current) { rtActiveRef.current = false; rt.stop() }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
@@ -320,6 +358,12 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
   }
 
   async function enterVoiceMode() {
+    if (rtActiveRef.current) { // exclusion mutua: solo un modo de voz activo a la vez
+      rtActiveRef.current = false
+      setRtActive(false)
+      setRtDraft(null)
+      await rt.stop()
+    }
     unlockAudio()
     voiceModeRef.current = true
     mutedRef.current = false
@@ -759,6 +803,12 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
       )}
 
       <div className="input-area">
+        {rtActive && rtDraft && (
+          <div className="rt-draft-chip">
+            <span className="rt-draft-icon">📋</span>
+            <span className="rt-draft-text">{rtDraft.resumen}</span>
+          </div>
+        )}
         {suggestions.length > 0 && !loading && (
           <div className="suggestions">
             {suggestions.map((s, i) => (
@@ -800,7 +850,7 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
               <button
                 className="mode-toggle-btn"
                 onClick={handleModeToggle}
-                disabled={!sessionId}
+                disabled={!sessionId || rtActive}
                 title={voiceMode ? "Volver a modo texto" : "Cambiar a modo audio (manos libres)"}
               >
                 {voiceMode ? (
@@ -814,7 +864,51 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
                 )}
               </button>
             )}
-            {voiceMode ? (
+            {enableVoice && rtEnabled && !voiceMode && (
+              <button
+                className={`realtime-toggle-btn ${rtActive ? "active" : ""}`}
+                onClick={handleRealtimeToggle}
+                disabled={!sessionId}
+                title={rtActive ? "Cortar la voz en vivo y volver a modo texto" : "Probar voz en vivo (beta) — conversación continua, podés interrumpir hablando"}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M4 12h3l3-7 4 14 3-7h3"/>
+                </svg>
+                {!rtActive && <span className="rt-beta-dot" title="Experimental" />}
+              </button>
+            )}
+            {rtActive ? (
+              <div className="voice-record-row realtime-row">
+                <button
+                  className={`voice-record-btn live ${rt.muted ? "muted" : rt.phase}`}
+                  onClick={rt.toggleMute}
+                  disabled={!sessionId}
+                  title={rt.muted ? "Reanudar el micrófono" : "Silenciar el micrófono"}
+                >
+                  {rt.muted ? (
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="2" y1="2" x2="22" y2="22"/><path d="M18.9 13.2A7 7 0 0 0 19 12v-1"/><path d="M5 11v1a7 7 0 0 0 10.7 6"/><path d="M9 5a3 3 0 0 1 6 0v5"/><path d="M9 9v2a3 3 0 0 0 4.6 2.5"/><line x1="12" y1="18" x2="12" y2="22"/>
+                    </svg>
+                  ) : (
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v1a7 7 0 0 1-14 0v-1"/><line x1="12" y1="18" x2="12" y2="22"/>
+                    </svg>
+                  )}
+                </button>
+                <span className="voice-status-label">
+                  {rt.muted ? "Micrófono en pausa"
+                   : rt.phase === "connecting" ? "Conectando…"
+                   : rt.phase === "listening"  ? "Te escucho — hablá cuando quieras"
+                   : rt.phase === "thinking"   ? "Pensando…"
+                   : rt.phase === "speaking"   ? "Hablando… (podés interrumpirme)"
+                   : rt.phase === "error"      ? "Se cortó la conexión — tocá el ícono para reconectar"
+                   : ""}
+                </span>
+                {rt.needsAudioTap && (
+                  <button className="rt-tap-audio-btn" onClick={rt.enableAudio}>Tocá para escuchar</button>
+                )}
+              </div>
+            ) : voiceMode ? (
               <div className="voice-record-row">
                 <button
                   className={`voice-record-btn ${voicePhase}`}
@@ -902,6 +996,9 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
           )}
         </div>
         <p className="disclaimer">Desarrollado por Braintrust CS firma miembro de Andersen Consulting</p>
+        {enableVoice && rtEnabled && (
+          <audio ref={rt.audioElRef} autoPlay playsInline style={{ display: "none" }} />
+        )}
       </div>
 
       </div>{/* close chat-main */}

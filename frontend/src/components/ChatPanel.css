@@ -845,3 +845,79 @@
   font-size: 13px;
   color: var(--text-muted);
 }
+
+/* ── Modo "Voz en vivo" (OpenAI Realtime API) — toggle experimental ── */
+.realtime-toggle-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 2px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color 0.15s;
+  padding: 0;
+  position: relative;
+}
+
+.realtime-toggle-btn:hover:not(:disabled) { color: var(--text); }
+.realtime-toggle-btn:disabled { opacity: 0.45; cursor: default; }
+.realtime-toggle-btn.active { color: #7c5cff; }
+
+.rt-beta-dot {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #7c5cff;
+}
+
+/* Estado activo del modo de voz en vivo: distinto color del modo VAD clasico
+   (.listening usa #d9364a) para que se distingan a simple vista. */
+.voice-record-btn.live {
+  background: #7c5cff;
+  color: #fff;
+  animation: pulse-slow 1.6s ease-in-out infinite;
+}
+
+.voice-record-btn.live.thinking { animation: pulse-slow 1s ease-in-out infinite; }
+
+.voice-record-btn.live.muted {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  animation: none;
+}
+
+.rt-tap-audio-btn {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.rt-draft-chip {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  background: rgba(124, 92, 255, 0.1);
+  border: 1px solid rgba(124, 92, 255, 0.35);
+  border-radius: 10px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.rt-draft-icon { flex-shrink: 0; }
+.rt-draft-text { line-height: 1.4; }
