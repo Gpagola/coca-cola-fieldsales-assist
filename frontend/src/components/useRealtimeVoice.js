@@ -33,6 +33,7 @@ export default function useRealtimeVoice({
   const lastAssistantItemIdRef = useRef(null)
   const audioStartedAtRef = useRef(0)
   const maxSessionTimerRef = useRef(null)
+  const connectTimeoutRef = useRef(null)
   const assistantTranscriptRef = useRef("")
   const responseActiveRef = useRef(false) // hay una response en curso del lado de OpenAI
 
@@ -53,6 +54,7 @@ export default function useRealtimeVoice({
 
   function cleanupConnection() {
     if (maxSessionTimerRef.current) { clearTimeout(maxSessionTimerRef.current); maxSessionTimerRef.current = null }
+    if (connectTimeoutRef.current) { clearTimeout(connectTimeoutRef.current); connectTimeoutRef.current = null }
     try { dcRef.current?.close() } catch (_) {}
     dcRef.current = null
     try { pcRef.current?.getSenders().forEach(s => s.track?.stop()) } catch (_) {}
@@ -265,7 +267,18 @@ export default function useRealtimeVoice({
       const model = data.model || cfgRef.current?.model
 
       // 4. WebRTC: mic hacia OpenAI, audio del modelo de vuelta, data channel de eventos.
-      const pc = new RTCPeerConnection()
+      // ICE_SERVERS: sin STUN, RTCPeerConnection solo reune candidatos "host" (IP local).
+      // Eso alcanza en una red hogar/oficina donde el NAT permite hairpin, pero en datos
+      // moviles / NAT restrictivo (el caso mas probable en un evento) la conexion queda
+      // "conectando" para siempre porque nunca hay un candidato usable. STUN publico
+      // resuelve el caso comun; si el NAT es simetrico (frecuente en redes moviles/4G)
+      // ni STUN alcanza y hace falta un TURN — no incluido aca por ahora.
+      const pc = new RTCPeerConnection({
+        iceServers: [
+          { urls: "stun:stun.l.google.com:19302" },
+          { urls: "stun:stun1.l.google.com:19302" },
+        ],
+      })
       pcRef.current = pc
       stream.getTracks().forEach(t => pc.addTrack(t, stream))
       pc.ontrack = (e) => {
@@ -279,12 +292,21 @@ export default function useRealtimeVoice({
       dc.onmessage = (e) => {
         try { handleServerEvent(JSON.parse(e.data)) } catch (_) {}
       }
-      dc.onopen = () => { if (activeRef.current) setPhaseBoth("listening") }
+      dc.onopen = () => {
+        if (!activeRef.current) return
+        if (connectTimeoutRef.current) { clearTimeout(connectTimeoutRef.current); connectTimeoutRef.current = null }
+        setPhaseBoth("listening")
+      }
       pc.oniceconnectionstatechange = () => {
+        console.log("[realtime] iceConnectionState:", pc.iceConnectionState)
         const st = pc.iceConnectionState
         if ((st === "failed" || st === "disconnected" || st === "closed") && activeRef.current) {
           handleDisconnect()
         }
+      }
+      pc.onconnectionstatechange = () => {
+        console.log("[realtime] connectionState:", pc.connectionState)
+        if (pc.connectionState === "failed" && activeRef.current) handleDisconnect()
       }
 
       const offer = await pc.createOffer()
@@ -298,6 +320,20 @@ export default function useRealtimeVoice({
       if (!sdpRes.ok) throw new Error(`HTTP ${sdpRes.status} negociando la conexion de voz`)
       const answerSdp = await sdpRes.text()
       await pc.setRemoteDescription({ type: "answer", sdp: answerSdp })
+
+      // Reloj de guardia: si el data channel no abre en 15s (ICE nunca conecta — la red
+      // no deja pasar UDP, NAT simetrico, etc.), cortar en vez de dejar "Conectando..."
+      // colgado para siempre.
+      connectTimeoutRef.current = setTimeout(() => {
+        if (activeRef.current && phaseRef.current === "connecting") {
+          activeRef.current = false
+          setPhaseBoth("error")
+          callbacksRef.current.onError?.(
+            "No se pudo establecer la conexión de voz en vivo (probablemente la red bloquea la conexión). Probá con otra red/WiFi."
+          )
+          cleanupConnection()
+        }
+      }, 15000)
 
       const maxMs = cfgRef.current?.max_session_ms || 10 * 60 * 1000
       maxSessionTimerRef.current = setTimeout(() => {
