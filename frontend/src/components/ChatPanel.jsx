@@ -523,6 +523,10 @@ export default function ChatPanel({ onLoadingChange, onNewCase, showEval = false
 
     const fileToSend = attachedFile
     setInput("")
+    // El alto del textarea se maneja a mano en handleInput (auto-grow); al vaciar el
+    // mensaje hay que resetearlo tambien a mano, si no queda estirado al tamano del
+    // ultimo mensaje largo aunque el contenido ya este vacio.
+    if (textareaRef.current) textareaRef.current.style.height = "auto"
     setAttachedFile(null)
     setSuggestions([])
     setEvaluation(null)
